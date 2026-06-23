@@ -452,6 +452,7 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'A4', child: Text('Print A4')),
               const PopupMenuItem(value: 'A5', child: Text('Print A5')),
+              const PopupMenuItem(value: 'A6', child: Text('Print A6')),
               const PopupMenuItem(value: 'POS', child: Text('Print POS (Thermal)')),
             ],
             onSelected: (format) {

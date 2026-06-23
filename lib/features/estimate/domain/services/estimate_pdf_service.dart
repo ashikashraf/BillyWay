@@ -5,11 +5,17 @@ import 'package:intl/intl.dart';
 import '../../data/models/estimate.dart';
 
 class EstimatePdfService {
-  static Future<Uint8List> generatePdf(Estimate estimate, String formatType) async {
+  static Future<Uint8List> generatePdf(
+    Estimate estimate,
+    String formatType,
+  ) async {
     final pdf = pw.Document();
 
     PdfPageFormat format;
     switch (formatType) {
+      case 'A6':
+        format = PdfPageFormat.a6;
+        break;
       case 'A5':
         format = PdfPageFormat.a5;
         break;
@@ -30,19 +36,24 @@ class EstimatePdfService {
     return pdf.save();
   }
 
-  static pw.Page _buildStandardPage(Estimate estimate, PdfPageFormat format, String formatType) {
+  static pw.Page _buildStandardPage(
+    Estimate estimate,
+    PdfPageFormat format,
+    String formatType,
+  ) {
+    final isA6 = formatType == 'A6';
     return pw.MultiPage(
       pageFormat: format,
-      margin: const pw.EdgeInsets.all(32),
+      margin: pw.EdgeInsets.all(isA6 ? 12 : 32),
       build: (context) {
         return [
-          _buildHeader(estimate),
-          pw.SizedBox(height: 20),
-          _buildCustomerInfo(estimate),
-          pw.SizedBox(height: 20),
-          _buildItemTable(estimate, isPos: false),
-          pw.SizedBox(height: 20),
-          _buildTotals(estimate, isPos: false),
+          _buildHeader(estimate, isA6: isA6),
+          pw.SizedBox(height: isA6 ? 8 : 20),
+          _buildCustomerInfo(estimate, isA6: isA6),
+          pw.SizedBox(height: isA6 ? 8 : 20),
+          _buildItemTable(estimate, isPos: false, isA6: isA6),
+          pw.SizedBox(height: isA6 ? 8 : 20),
+          _buildTotals(estimate, isPos: false, isA6: isA6),
         ];
       },
     );
@@ -57,9 +68,14 @@ class EstimatePdfService {
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Center(
-              child: pw.Text('BILLYWAY ERP', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+              child: pw.Text(
+                'ESTIMATE',
+                style: pw.TextStyle(
+                  fontSize: 16,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
             ),
-            pw.Center(child: pw.Text('TAX-FREE QUOTATION/ESTIMATE')),
             pw.Divider(borderStyle: pw.BorderStyle.dashed),
             pw.Text('Est No: ${estimate.estimateNumber}'),
             pw.Text('Date: ${DateFormat('dd MMM yyyy').format(estimate.date)}'),
@@ -76,49 +92,78 @@ class EstimatePdfService {
     );
   }
 
-  static pw.Widget _buildHeader(Estimate estimate) {
+  static pw.Widget _buildHeader(Estimate estimate, {bool isA6 = false}) {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
         pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Text('BILLYWAY ERP', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
-            pw.Text('Estimate Bill', style: pw.TextStyle(fontSize: 16, color: PdfColors.grey700)),
+            pw.Text(
+              'ESTIMATE',
+              style: pw.TextStyle(
+                fontSize: isA6 ? 18 : 24,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
           ],
         ),
         pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.end,
           children: [
-            pw.Text('Est No: ${estimate.estimateNumber}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-            pw.Text('Date: ${DateFormat('dd MMM yyyy').format(estimate.date)}'),
+            pw.Text(
+              'Est No: ${estimate.estimateNumber}',
+              style: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                fontSize: isA6 ? 10 : 12,
+              ),
+            ),
+            pw.Text(
+              'Date: ${DateFormat('dd MMM yyyy').format(estimate.date)}',
+              style: pw.TextStyle(fontSize: isA6 ? 10 : 12),
+            ),
           ],
         ),
       ],
     );
   }
 
-  static pw.Widget _buildCustomerInfo(Estimate estimate) {
+  static pw.Widget _buildCustomerInfo(Estimate estimate, {bool isA6 = false}) {
     return pw.Container(
-      padding: const pw.EdgeInsets.all(10),
+      padding: pw.EdgeInsets.all(isA6 ? 6 : 10),
       decoration: pw.BoxDecoration(
         color: PdfColors.grey100,
         borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
       ),
       child: pw.Row(
         children: [
-          pw.Text('Customer: ', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-          pw.Text(estimate.customerName),
+          pw.Text(
+            'Customer: ',
+            style: pw.TextStyle(
+              fontWeight: pw.FontWeight.bold,
+              fontSize: isA6 ? 10 : 12,
+            ),
+          ),
+          pw.Text(
+            estimate.customerName,
+            style: pw.TextStyle(fontSize: isA6 ? 10 : 12),
+          ),
         ],
       ),
     );
   }
 
-  static pw.Widget _buildItemTable(Estimate estimate, {required bool isPos}) {
-    final headers = isPos 
-      ? ['Item', 'Qty', 'Rate', 'Amt'] 
-      : ['Particulars', 'Qty', 'Unit', 'Rate', 'Amount'];
-      
+  static pw.Widget _buildItemTable(
+    Estimate estimate, {
+    required bool isPos,
+    bool isA6 = false,
+  }) {
+    final headers = isPos
+        ? ['Item', 'Qty', 'Rate', 'Amt']
+        : (isA6
+              ? ['Item', 'Qty', 'Unit', 'Rate', 'Amt']
+              : ['Particulars', 'Qty', 'Unit', 'Rate', 'Amount']);
+
     final data = estimate.items.map((item) {
       if (isPos) {
         return [
@@ -141,17 +186,41 @@ class EstimatePdfService {
       headers: headers,
       data: data,
       border: isPos ? null : pw.TableBorder.all(color: PdfColors.grey400),
-      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: isPos ? 10 : 12),
-      cellStyle: pw.TextStyle(fontSize: isPos ? 10 : 12),
-      headerDecoration: isPos ? null : const pw.BoxDecoration(color: PdfColors.grey200),
-      cellAlignments: isPos 
-        ? {0: pw.Alignment.centerLeft, 1: pw.Alignment.center, 2: pw.Alignment.centerRight, 3: pw.Alignment.centerRight}
-        : {0: pw.Alignment.centerLeft, 1: pw.Alignment.center, 2: pw.Alignment.center, 3: pw.Alignment.centerRight, 4: pw.Alignment.centerRight},
+      headerStyle: pw.TextStyle(
+        fontWeight: pw.FontWeight.bold,
+        fontSize: isPos ? 10 : (isA6 ? 8 : 12),
+      ),
+      cellStyle: pw.TextStyle(fontSize: isPos ? 10 : (isA6 ? 8 : 12)),
+      cellPadding: pw.EdgeInsets.symmetric(
+        horizontal: isA6 ? 4 : 5,
+        vertical: isA6 ? 2 : 5,
+      ),
+      headerDecoration: isPos
+          ? null
+          : const pw.BoxDecoration(color: PdfColors.grey200),
+      cellAlignments: isPos
+          ? {
+              0: pw.Alignment.centerLeft,
+              1: pw.Alignment.center,
+              2: pw.Alignment.centerRight,
+              3: pw.Alignment.centerRight,
+            }
+          : {
+              0: pw.Alignment.centerLeft,
+              1: pw.Alignment.center,
+              2: pw.Alignment.center,
+              3: pw.Alignment.centerRight,
+              4: pw.Alignment.centerRight,
+            },
     );
   }
 
-  static pw.Widget _buildTotals(Estimate estimate, {required bool isPos}) {
-    final fontSize = isPos ? 10.0 : 12.0;
+  static pw.Widget _buildTotals(
+    Estimate estimate, {
+    required bool isPos,
+    bool isA6 = false,
+  }) {
+    final fontSize = isPos ? 10.0 : (isA6 ? 9.0 : 12.0);
     return pw.Container(
       alignment: pw.Alignment.centerRight,
       child: pw.Column(
@@ -160,30 +229,54 @@ class EstimatePdfService {
           _buildTotalRow('Subtotal:', estimate.subtotal, fontSize),
           _buildTotalRow('Old Balance:', estimate.oldBalance, fontSize),
           pw.Divider(color: PdfColors.grey400),
-          _buildTotalRow('Total:', estimate.total, isPos ? 12 : 16, isBold: true),
+          _buildTotalRow(
+            'Total:',
+            estimate.total,
+            isPos ? 12 : (isA6 ? 12 : 16),
+            isBold: true,
+          ),
           if (estimate.settledAmount > 0) ...[
-            pw.SizedBox(height: 5),
+            pw.SizedBox(height: isA6 ? 2 : 5),
             _buildTotalRow('Settled Amt:', estimate.settledAmount, fontSize),
-            _buildTotalRow('New Balance:', estimate.balance, isPos ? 10 : 14, isBold: true),
-          ]
+            _buildTotalRow(
+              'New Balance:',
+              estimate.balance,
+              isPos ? 10 : (isA6 ? 10 : 14),
+              isBold: true,
+            ),
+          ],
         ],
       ),
     );
   }
 
-  static pw.Widget _buildTotalRow(String label, double amount, double fontSize, {bool isBold = false}) {
+  static pw.Widget _buildTotalRow(
+    String label,
+    double amount,
+    double fontSize, {
+    bool isBold = false,
+  }) {
     return pw.Row(
       mainAxisSize: pw.MainAxisSize.min,
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
-        pw.Text(label, style: pw.TextStyle(fontSize: fontSize, fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+        pw.Text(
+          label,
+          style: pw.TextStyle(
+            fontSize: fontSize,
+            fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+          ),
+        ),
         pw.SizedBox(width: 20),
         pw.Container(
           width: 80,
           alignment: pw.Alignment.centerRight,
           child: pw.Text(
             amount.toStringAsFixed(2),
-            style: pw.TextStyle(fontSize: fontSize, fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal),
+            style: pw.TextStyle(
+              fontSize: fontSize,
+              fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            ),
           ),
         ),
       ],

@@ -52,6 +52,8 @@ class EstimatePdfPreviewPage extends StatelessWidget {
 
   PdfPageFormat _getInitialFormat(String type) {
     switch (type) {
+      case 'A6':
+        return PdfPageFormat.a6;
       case 'A5':
         return PdfPageFormat.a5;
       case 'POS':
