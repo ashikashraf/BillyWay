@@ -52,12 +52,22 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _estimateNoCtrl.text =
-        'EST-${now.year}-${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-${now.millisecond}';
+    _date = DateTime.now();
+    _estimateNoCtrl.text = 'Loading...';
+    _fetchNextEstimateNumber();
     
-    _loadData();
     _setupFocusListeners();
+  }
+
+  Future<void> _fetchNextEstimateNumber() async {
+    final controller = getIt<EstimateController>();
+    final nextNo = await controller.getNextEstimateNumber();
+    if (mounted) {
+      setState(() {
+        _estimateNoCtrl.text = nextNo;
+      });
+      _loadData();
+    }
   }
 
   Future<void> _loadData() async {
@@ -295,33 +305,32 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
 
   Future<void> _showCustomerSearchDialog() async {
     final searchCtrl = TextEditingController();
-    List<EstimateCustomer> filtered = List.from(_customers);
+    final filteredNotifier = ValueNotifier<List<EstimateCustomer>>(List.from(_customers));
 
     await showDialog(
       context: context,
       builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Search Customers'),
-              content: SizedBox(
-                width: 400,
-                height: 400,
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: searchCtrl,
-                      decoration: const InputDecoration(labelText: 'Search...', prefixIcon: Icon(Icons.search)),
-                      autofocus: true,
-                      onChanged: (v) {
-                        setDialogState(() {
-                          filtered = _customers.where((c) => c.name.toLowerCase().contains(v.toLowerCase())).toList();
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: ListView.builder(
+        return AlertDialog(
+          title: const Text('Search Customers'),
+          content: SizedBox(
+            width: 400,
+            height: 400,
+            child: Column(
+              children: [
+                TextField(
+                  controller: searchCtrl,
+                  decoration: const InputDecoration(labelText: 'Search...', prefixIcon: Icon(Icons.search)),
+                  autofocus: true,
+                  onChanged: (v) {
+                    filteredNotifier.value = _customers.where((c) => c.name.toLowerCase().contains(v.toLowerCase())).toList();
+                  },
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: ValueListenableBuilder<List<EstimateCustomer>>(
+                    valueListenable: filteredNotifier,
+                    builder: (context, filtered, child) {
+                      return ListView.builder(
                         itemCount: filtered.length,
                         itemBuilder: (context, index) {
                           final c = filtered[index];
@@ -337,14 +346,14 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                             },
                           );
                         },
-                      ),
-                    ),
-                  ],
+                      );
+                    },
+                  ),
                 ),
-              ),
-              actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
-            );
-          },
+              ],
+            ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
         );
       },
     );
@@ -352,33 +361,32 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
 
   Future<void> _showProductSearchDialog(int rowIndex) async {
     final searchCtrl = TextEditingController();
-    List<EstimateProduct> filtered = List.from(_products);
+    final filteredNotifier = ValueNotifier<List<EstimateProduct>>(List.from(_products));
 
     await showDialog(
       context: context,
       builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Search Products'),
-              content: SizedBox(
-                width: 400,
-                height: 400,
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: searchCtrl,
-                      decoration: const InputDecoration(labelText: 'Search...', prefixIcon: Icon(Icons.search)),
-                      autofocus: true,
-                      onChanged: (v) {
-                        setDialogState(() {
-                          filtered = _products.where((p) => p.particular.toLowerCase().contains(v.toLowerCase())).toList();
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: ListView.builder(
+        return AlertDialog(
+          title: const Text('Search Products'),
+          content: SizedBox(
+            width: 400,
+            height: 400,
+            child: Column(
+              children: [
+                TextField(
+                  controller: searchCtrl,
+                  decoration: const InputDecoration(labelText: 'Search...', prefixIcon: Icon(Icons.search)),
+                  autofocus: true,
+                  onChanged: (v) {
+                    filteredNotifier.value = _products.where((p) => p.particular.toLowerCase().contains(v.toLowerCase())).toList();
+                  },
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: ValueListenableBuilder<List<EstimateProduct>>(
+                    valueListenable: filteredNotifier,
+                    builder: (context, filtered, child) {
+                      return ListView.builder(
                         itemCount: filtered.length,
                         itemBuilder: (context, index) {
                           final p = filtered[index];
@@ -395,14 +403,14 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                             },
                           );
                         },
-                      ),
-                    ),
-                  ],
+                      );
+                    },
+                  ),
                 ),
-              ),
-              actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
-            );
-          },
+              ],
+            ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
         );
       },
     );
@@ -471,6 +479,7 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
       extra: {
         'estimate': estimate,
         'formatType': format,
+        'fromNewEstimate': true,
       },
     );
   }
@@ -642,9 +651,10 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                           });
                         },
                         fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
-                          // Sync controllers
-                          controller.text = _customerCtrl.text;
-                          controller.addListener(() => _customerCtrl.text = controller.text);
+                          // Sync controllers safely without breaking cursor
+                          if (controller.text != _customerCtrl.text) {
+                            controller.text = _customerCtrl.text;
+                          }
                           
                           // Transfer FocusNode onKeyEvent
                           focusNode.onKeyEvent = _customerFocusNode.onKeyEvent;
@@ -661,6 +671,9 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                                 tooltip: 'Create Party (Ctrl+F1)',
                               ),
                             ),
+                            onChanged: (val) {
+                              _customerCtrl.text = val;
+                            },
                             validator: (v) => v == null || v.isEmpty ? 'Required' : null,
                           );
                         },
@@ -825,8 +838,9 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                 });
               },
               fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
-                controller.text = row.particularCtr.text;
-                controller.addListener(() => row.particularCtr.text = controller.text);
+                if (controller.text != row.particularCtr.text) {
+                  controller.text = row.particularCtr.text;
+                }
                 
                 focusNode.onKeyEvent = row.focusNode.onKeyEvent;
 
@@ -845,7 +859,9 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                     ),
                   ),
                   style: TextStyle(fontSize: 13.sp),
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (val) {
+                    row.particularCtr.text = val;
+                  },
                 );
               },
             ),

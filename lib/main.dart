@@ -146,6 +146,7 @@ final GoRouter _router = GoRouter(
             return EstimatePdfPreviewPage(
               estimate: args['estimate'],
               formatType: args['formatType'] ?? 'A4',
+              fromNewEstimate: args['fromNewEstimate'] ?? false,
             );
           },
         ),

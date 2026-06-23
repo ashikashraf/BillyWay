@@ -58,6 +58,42 @@ class EstimateController {
     }
   }
 
+  /// Delete an estimate
+  Future<void> deleteEstimate(String id) async {
+    try {
+      await _supabaseClient.from('estimates').delete().eq('id', id);
+    } catch (e) {
+      debugPrint('Error deleting estimate: $e');
+      rethrow;
+    }
+  }
+
+  /// Get next sequential estimate number
+  Future<String> getNextEstimateNumber() async {
+    try {
+      final response = await _supabaseClient
+          .from('estimates')
+          .select('estimate_number')
+          .order('created_at', ascending: false)
+          .limit(1);
+
+      if (response.isEmpty) return 'EST-001';
+
+      final lastNo = response.first['estimate_number'] as String;
+      final parts = lastNo.split('-');
+      if (parts.length == 2) {
+        final numPart = int.tryParse(parts[1]);
+        if (numPart != null) {
+          return 'EST-${(numPart + 1).toString().padLeft(3, '0')}';
+        }
+      }
+      return 'EST-001';
+    } catch (e) {
+      debugPrint('Error getting next estimate number: $e');
+      return 'EST-001';
+    }
+  }
+
   Future<EstimateCustomer?> createEstimateCustomer(EstimateCustomer customer) async {
     try {
       final response = await _supabaseClient

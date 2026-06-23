@@ -82,7 +82,9 @@ class _NewQuotationPageState extends State<NewQuotationPage> {
     _addressCtrl.dispose();
     _shippingCtrl.dispose();
     _notesCtrl.dispose();
-    for (final r in _rows) r.dispose();
+    for (final row in _rows) {
+      row.dispose();
+    }
     super.dispose();
   }
 

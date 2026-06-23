@@ -9,11 +9,13 @@ import 'package:billy_way/core/theme/app_colors.dart';
 class EstimatePdfPreviewPage extends StatelessWidget {
   final Estimate estimate;
   final String formatType;
+  final bool fromNewEstimate;
 
   const EstimatePdfPreviewPage({
     super.key,
     required this.estimate,
     required this.formatType,
+    this.fromNewEstimate = false,
   });
 
   @override
@@ -23,8 +25,13 @@ class EstimatePdfPreviewPage extends StatelessWidget {
         title: Text('Preview - ${estimate.estimateNumber} ($formatType)'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () =>
-              context.go('/estimates'), // Go back to the estimates list
+          onPressed: () {
+            context.pop(); // Pop the preview page
+            if (fromNewEstimate) {
+              context
+                  .pop(); // Pop the New Estimate page to return to main list and trigger reload
+            }
+          },
         ),
       ),
       body: PdfPreview(

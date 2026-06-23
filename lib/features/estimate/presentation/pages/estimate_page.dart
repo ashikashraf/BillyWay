@@ -118,7 +118,7 @@ class _EstimatePageState extends State<EstimatePage> {
 
   Widget _buildStatsRow() {
     final total = _estimates.length;
-    final totalValue = _estimates.fold<double>(0, (sum, e) => sum + e.total);
+    final totalValue = _estimates.fold<double>(0, (sum, e) => sum + e.subtotal);
 
     return Row(
       children: [
@@ -272,7 +272,32 @@ class _EstimatePageState extends State<EstimatePage> {
                       tooltip: 'Delete',
                       icon: Icon(Icons.delete_outline,
                           size: 18.sp, color: AppColors.error),
-                      onPressed: () {},
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Delete Estimate'),
+                            content: Text('Are you sure you want to delete ${e.estimateNumber}?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                child: const Text('Cancel'),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white),
+                                onPressed: () async {
+                                  Navigator.pop(ctx);
+                                  if (e.id != null) {
+                                    await getIt<EstimateController>().deleteEstimate(e.id!);
+                                    _loadEstimates();
+                                  }
+                                },
+                                child: const Text('Delete'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
