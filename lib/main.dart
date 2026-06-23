@@ -1,24 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'core/theme/app_theme.dart';
+import 'package:billy_way/core/theme/app_theme.dart';
 import 'package:go_router/go_router.dart';
-import 'shared/widgets/main_layout.dart';
-import 'features/sales/presentation/pages/sales_page.dart';
-import 'features/dashboard/presentation/pages/dashboard_page.dart';
-import 'features/sales/presentation/pages/new_invoice_page.dart';
-import 'features/purchase/presentation/pages/purchase_page.dart';
-import 'features/purchase/presentation/pages/new_purchase_page.dart';
-import 'features/stock/presentation/pages/product_entry_page.dart';
-import 'features/parties/presentation/pages/ledger_entry_page.dart';
-import 'features/masters/presentation/pages/master_management_page.dart';
-import 'features/auth/presentation/pages/login_page.dart';
-import 'features/auth/presentation/pages/user_management_page.dart';
+import 'package:billy_way/shared/widgets/main_layout.dart';
+import 'package:billy_way/features/sales/presentation/pages/sales_page.dart';
+import 'package:billy_way/features/dashboard/presentation/pages/dashboard_page.dart';
+import 'package:billy_way/features/sales/presentation/pages/new_invoice_page.dart';
+import 'package:billy_way/features/purchase/presentation/pages/purchase_page.dart';
+import 'package:billy_way/features/purchase/presentation/pages/new_purchase_page.dart';
+import 'package:billy_way/features/stock/presentation/pages/product_entry_page.dart';
+import 'package:billy_way/features/parties/presentation/pages/ledger_entry_page.dart';
+import 'package:billy_way/features/masters/presentation/pages/master_management_page.dart';
+import 'package:billy_way/features/auth/presentation/pages/login_page.dart';
+import 'package:billy_way/features/auth/presentation/pages/user_management_page.dart';
+import 'package:billy_way/features/quotation/presentation/pages/quotation_page.dart';
+import 'package:billy_way/features/quotation/presentation/pages/new_quotation_page.dart';
+import 'package:billy_way/features/quotation/domain/controllers/quotation_controller.dart';
+import 'package:billy_way/features/estimate/presentation/pages/estimate_page.dart';
+import 'package:billy_way/features/estimate/presentation/pages/new_estimate_page.dart';
+import 'package:billy_way/features/estimate/presentation/pages/estimate_pdf_preview_page.dart';
+import 'package:billy_way/features/estimate/domain/controllers/estimate_controller.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:get_it/get_it.dart';
-import 'features/auth/domain/repositories/auth_repository.dart';
-import 'features/auth/data/repositories/supabase_auth_repository.dart';
-import 'features/masters/domain/controllers/master_data_controller.dart';
+import 'package:billy_way/features/auth/domain/repositories/auth_repository.dart';
+import 'package:billy_way/features/auth/data/repositories/supabase_auth_repository.dart';
+import 'package:billy_way/features/masters/domain/controllers/master_data_controller.dart';
+import 'package:billy_way/features/sales/domain/controllers/sales_controller.dart';
 
 final getIt = GetIt.instance;
 
@@ -28,6 +36,15 @@ void setupDependencies() {
   );
   getIt.registerLazySingleton<MasterDataController>(
     () => MasterDataController(Supabase.instance.client),
+  );
+  getIt.registerLazySingleton<SalesController>(
+    () => SalesController(Supabase.instance.client),
+  );
+  getIt.registerLazySingleton<QuotationController>(
+    () => QuotationController(Supabase.instance.client),
+  );
+  getIt.registerLazySingleton<EstimateController>(
+    () => EstimateController(Supabase.instance.client),
   );
 }
 
@@ -105,6 +122,32 @@ final GoRouter _router = GoRouter(
         GoRoute(
           path: '/new-invoice',
           builder: (context, state) => const NewInvoicePage(),
+        ),
+        GoRoute(
+          path: '/quotations',
+          builder: (context, state) => const QuotationPage(),
+        ),
+        GoRoute(
+          path: '/new-quotation',
+          builder: (context, state) => const NewQuotationPage(),
+        ),
+        GoRoute(
+          path: '/estimates',
+          builder: (context, state) => const EstimatePage(),
+        ),
+        GoRoute(
+          path: '/new-estimate',
+          builder: (context, state) => const NewEstimatePage(),
+        ),
+        GoRoute(
+          path: '/estimate-preview',
+          builder: (context, state) {
+            final args = state.extra as Map<String, dynamic>? ?? {};
+            return EstimatePdfPreviewPage(
+              estimate: args['estimate'],
+              formatType: args['formatType'] ?? 'A4',
+            );
+          },
         ),
         GoRoute(
           path: '/purchase',

@@ -24,31 +24,37 @@ class _MainLayoutState extends State<MainLayout> {
         context.go('/sales');
         break;
       case 2:
-        context.go('/purchase');
+        context.go('/quotations');
         break;
       case 3:
-        context.go('/stock');
+        context.go('/purchase');
         break;
       case 4:
-        context.go('/transfers');
+        context.go('/stock');
         break;
       case 5:
-        context.go('/reports');
+        context.go('/transfers');
         break;
       case 6:
-        context.go('/parties');
+        context.go('/reports');
         break;
       case 7:
-        context.go('/items');
+        context.go('/parties');
         break;
       case 8:
-        context.go('/masters');
+        context.go('/items');
         break;
       case 9:
-        context.go('/users');
+        context.go('/masters');
         break;
       case 10:
+        context.go('/users');
+        break;
+      case 11:
         context.go('/settings');
+        break;
+      case 12:
+        context.go('/estimates');
         break;
     }
   }

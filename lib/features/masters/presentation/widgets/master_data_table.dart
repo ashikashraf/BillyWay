@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../main.dart';
-import '../../domain/controllers/master_data_controller.dart';
-import '../pages/master_management_page.dart';
+import 'package:billy_way/core/theme/app_colors.dart';
+import 'package:billy_way/main.dart';
+import 'package:billy_way/features/masters/domain/controllers/master_data_controller.dart';
+import 'package:billy_way/features/masters/presentation/pages/master_management_page.dart';
 
 class MasterDataTable extends StatelessWidget {
   final MasterModule module;
-
   const MasterDataTable({super.key, required this.module});
 
   @override
@@ -34,36 +33,53 @@ class MasterDataTable extends StatelessWidget {
               ),
               horizontalMargin: 24.w,
               columnSpacing: 24.w,
-              columns:
-                  headers
-                      .map(
-                        (h) => DataColumn(
-                          label: Text(
-                            h.toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textSecondary,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                        ),
-                      )
-                      .toList()
-                    ..add(
-                      DataColumn(
-                        label: Text(
-                          'ACTIONS',
-                          style: TextStyle(
-                            fontSize: 12.sp,
-                            fontWeight: FontWeight.bold,
-                          ),
+              columns: headers
+                  .map(
+                    (h) => DataColumn(
+                      label: Text(
+                        h.toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 12.sp,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textSecondary,
+                          letterSpacing: 1.2,
                         ),
                       ),
                     ),
-              rows: items.isEmpty
-                  ? [_buildEmptyRow(headers.length + 1)]
-                  : items.map((item) => _buildDataRow(item)).toList(),
+                  )
+                  .toList(),
+              rows: items.map((item) {
+                return DataRow(
+                  cells:
+                      _getCellsForItem(item)
+                          .map((cell) => DataCell(Text(cell.toString())))
+                          .toList()
+                        ..add(
+                          DataCell(
+                            Row(
+                              children: [
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.edit_outlined,
+                                    size: 18.sp,
+                                    color: AppColors.primary,
+                                  ),
+                                  onPressed: () {},
+                                ),
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.delete_outline,
+                                    size: 18.sp,
+                                    color: AppColors.error,
+                                  ),
+                                  onPressed: () {},
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                );
+              }).toList(),
             ),
           ),
         );
@@ -71,58 +87,34 @@ class MasterDataTable extends StatelessWidget {
     );
   }
 
-  DataRow _buildEmptyRow(int columnCount) {
-    return DataRow(
-      cells: List.generate(columnCount, (index) {
-        if (index == 0) return const DataCell(Text('No records found'));
-        return const DataCell(Text(''));
-      }),
-    );
-  }
-
-  DataRow _buildDataRow(Map<String, dynamic> item) {
-    final cells = _getCellsForItem(item);
-    return DataRow(
-      cells:
-          cells
-              .map(
-                (c) => DataCell(
-                  Text(
-                    c.toString(),
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-              )
-              .toList()
-            ..add(
-              DataCell(
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        Icons.edit_outlined,
-                        size: 18.sp,
-                        color: AppColors.primary,
-                      ),
-                      onPressed: () {},
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.delete_outline,
-                        size: 18.sp,
-                        color: AppColors.error,
-                      ),
-                      onPressed: () {},
-                    ),
-                  ],
-                ),
-              ),
-            ),
-    );
+  List<String> _getHeaders() {
+    switch (module) {
+      case MasterModule.ledgerGroup:
+        return ['Name', 'Parent Group', 'Nature', 'GST', 'Status', 'Actions'];
+      case MasterModule.hsnCode:
+        return [
+          'HSN Code',
+          'Description',
+          'GST Rate',
+          'Type',
+          'Status',
+          'Actions',
+        ];
+      case MasterModule.itemCategory:
+        return ['Category', 'HSN/SAC', 'Tax Class', 'Status', 'Actions'];
+      case MasterModule.taxClass:
+        return ['Tax Class', 'GST %', 'Type', 'Status', 'Actions'];
+      case MasterModule.transactionType:
+        return ['Type', 'Category', 'Prefix', 'Status', 'Actions'];
+      case MasterModule.sundryType:
+        return ['Type', 'Nature', 'Account', 'Status', 'Actions'];
+      case MasterModule.uom:
+        return ['Unit Name', 'Symbol', 'UQC', 'Status', 'Actions'];
+      case MasterModule.brand:
+        return ['Brand Name', 'Manufacturer', 'Status', 'Actions'];
+      case MasterModule.warehouse:
+        return ['Warehouse', 'Location', 'Incharge', 'Status', 'Actions'];
+    }
   }
 
   List<dynamic> _getCellsForItem(Map<String, dynamic> item) {
@@ -146,78 +138,51 @@ class MasterDataTable extends StatelessWidget {
       case MasterModule.itemCategory:
         return [
           item['category_name'] ?? '',
-          item['parent_category_id'] ?? '-',
-          item['code'] ?? '',
+          item['hsn_sac'] ?? '-',
+          item['tax_class'] ?? '-',
           item['status'] ?? 'active',
         ];
       case MasterModule.taxClass:
         return [
-          item['tax_class_name'] ?? '',
-          '${item['gst_percentage'] ?? 0}%',
-          '${item['cgst']}+${item['sgst']}+${item['igst']}',
-          item['inclusive_type'] == true ? 'Inclusive' : 'Exclusive',
+          item['class_name'] ?? '',
+          '${item['gst_rate'] ?? 0}%',
+          item['tax_type'] ?? '-',
           item['status'] ?? 'active',
         ];
       case MasterModule.transactionType:
         return [
-          item['name'] ?? '',
-          item['mode'] ?? '',
-          item['default_ledger_group_id'] ?? '-',
-          item['auto_prefix'] ?? '',
+          item['type_name'] ?? '',
+          item['category'] ?? '-',
+          item['prefix'] ?? '-',
           item['status'] ?? 'active',
         ];
       case MasterModule.sundryType:
         return [
-          item['sundry_type_name'] ?? '',
-          item['type'] ?? '',
-          item['tax_applicable'] == true ? 'Yes' : 'No',
+          item['sundry_name'] ?? '',
+          item['nature'] ?? '-',
+          item['account_id'] ?? '-',
           item['status'] ?? 'active',
         ];
       case MasterModule.uom:
         return [
           item['unit_name'] ?? '',
           item['symbol'] ?? '',
-          item['allow_decimal'] == true ? 'Yes' : 'No',
+          item['uqc_code'] ?? '',
           item['status'] ?? 'active',
         ];
       case MasterModule.brand:
         return [
           item['brand_name'] ?? '',
-          item['code'] ?? '',
-          '-',
+          item['manufacturer'] ?? '-',
           item['status'] ?? 'active',
         ];
       case MasterModule.warehouse:
         return [
           item['warehouse_name'] ?? '',
-          item['code'] ?? '',
-          item['location'] ?? '',
-          item['contact_person'] ?? '',
+          item['location'] ?? '-',
+          item['incharge'] ?? '-',
           item['status'] ?? 'active',
         ];
-    }
-  }
-
-  List<String> _getHeaders() {
-    switch (module) {
-      case MasterModule.ledgerGroup:
-        return ['Group Name', 'Parent Group', 'Nature', 'GST', 'Status'];
-      case MasterModule.hsnCode:
-        return ['HSN/SAC', 'Description', 'GST %', 'Type', 'Status'];
-      case MasterModule.itemCategory:
-        return ['Category Name', 'Parent', 'Code', 'Status'];
-      case MasterModule.taxClass:
-        return ['Class Name', 'GST %', 'Split', 'Type', 'Status'];
-      case MasterModule.transactionType:
-        return ['Name', 'Mode', 'Linked Group', 'Prefix', 'Status'];
-      case MasterModule.sundryType:
-        return ['Name', 'Type', 'Tax Applicability', 'Status'];
-      case MasterModule.uom:
-        return ['Unit Name', 'Symbol', 'Decimals', 'Status'];
-      case MasterModule.brand:
-        return ['Brand Name', 'Code', 'Description', 'Status'];
-      case MasterModule.warehouse:
-        return ['Warehouse Name', 'Code', 'Location', 'Contact', 'Status'];
     }
   }
 }

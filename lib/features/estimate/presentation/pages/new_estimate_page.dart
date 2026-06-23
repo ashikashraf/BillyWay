@@ -1,0 +1,1069 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:intl/intl.dart';
+import 'package:billy_way/core/theme/app_colors.dart';
+import 'package:billy_way/main.dart';
+import 'package:billy_way/features/estimate/domain/controllers/estimate_controller.dart';
+import 'package:billy_way/features/estimate/data/models/estimate.dart';
+import 'package:go_router/go_router.dart';
+
+class NewEstimatePage extends StatefulWidget {
+  const NewEstimatePage({super.key});
+
+  @override
+  State<NewEstimatePage> createState() => _NewEstimatePageState();
+}
+
+class _ItemRow {
+  final TextEditingController particularCtr = TextEditingController();
+  final TextEditingController qtyCtr = TextEditingController(text: '1');
+  final TextEditingController unitCtr = TextEditingController(text: 'PCS');
+  final TextEditingController rateCtr = TextEditingController(text: '0');
+  final FocusNode focusNode = FocusNode();
+  final FocusNode unitFocusNode = FocusNode();
+
+  void dispose() {
+    particularCtr.dispose();
+    qtyCtr.dispose();
+    unitCtr.dispose();
+    rateCtr.dispose();
+    focusNode.dispose();
+    unitFocusNode.dispose();
+  }
+}
+
+class _NewEstimatePageState extends State<NewEstimatePage> {
+  final _formKey = GlobalKey<FormState>();
+
+  final _estimateNoCtrl = TextEditingController();
+  final _customerCtrl = TextEditingController();
+  final _oldBalanceCtrl = TextEditingController(text: '0.00');
+  final _settledAmountCtrl = TextEditingController(text: '0.00');
+  final _customerFocusNode = FocusNode();
+
+  DateTime _date = DateTime.now();
+  final List<_ItemRow> _rows = [_ItemRow()];
+  bool _isSaving = false;
+
+  List<EstimateCustomer> _customers = [];
+  List<EstimateProduct> _products = [];
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _estimateNoCtrl.text =
+        'EST-${now.year}-${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-${now.millisecond}';
+    
+    _loadData();
+    _setupFocusListeners();
+  }
+
+  Future<void> _loadData() async {
+    final controller = getIt<EstimateController>();
+    final customers = await controller.getEstimateCustomers();
+    final products = await controller.getEstimateProducts();
+    if (mounted) {
+      setState(() {
+        _customers = customers;
+        _products = products;
+      });
+    }
+  }
+
+  void _setupFocusListeners() {
+    _customerFocusNode.onKeyEvent = (node, event) {
+      if (event is KeyDownEvent) {
+        if (event.logicalKey == LogicalKeyboardKey.f1) {
+          _showAddCustomerDialog();
+          return KeyEventResult.handled;
+        } else if (event.logicalKey == LogicalKeyboardKey.f2) {
+          _showCustomerSearchDialog();
+          return KeyEventResult.handled;
+        }
+      }
+      return KeyEventResult.ignored;
+    };
+  }
+
+  void _setupRowFocusListener(_ItemRow row, int index) {
+    row.focusNode.onKeyEvent = (node, event) {
+      if (event is KeyDownEvent) {
+        if (event.logicalKey == LogicalKeyboardKey.f1) {
+          _showAddProductDialog(index);
+          return KeyEventResult.handled;
+        } else if (event.logicalKey == LogicalKeyboardKey.f2) {
+          _showProductSearchDialog(index);
+          return KeyEventResult.handled;
+        }
+      }
+      return KeyEventResult.ignored;
+    };
+
+    row.unitFocusNode.onKeyEvent = (node, event) {
+      if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.space) {
+        _showUnitSelectionDialog((selectedUnit) {
+          setState(() => row.unitCtr.text = selectedUnit);
+        });
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    };
+  }
+
+  Future<void> _showUnitSelectionDialog(Function(String) onSelect) async {
+    final units = ['PCS', 'KGS', 'PAC', 'NOS', 'PAIR', 'BOX', 'LTR', 'MTR', 'SET'];
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Select Unit'),
+        children: units.map((u) => SimpleDialogOption(
+          onPressed: () => Navigator.pop(context, u),
+          child: Text(u, style: TextStyle(fontSize: 14.sp)),
+        )).toList(),
+      ),
+    );
+    if (selected != null) {
+      onSelect(selected);
+    }
+  }
+
+  @override
+  void dispose() {
+    _estimateNoCtrl.dispose();
+    _customerCtrl.dispose();
+    _oldBalanceCtrl.dispose();
+    _settledAmountCtrl.dispose();
+    _customerFocusNode.dispose();
+    for (final r in _rows) {
+      r.dispose();
+    }
+    super.dispose();
+  }
+
+  double _rowAmount(_ItemRow row) {
+    final qty = double.tryParse(row.qtyCtr.text) ?? 0;
+    final rate = double.tryParse(row.rateCtr.text) ?? 0;
+    return qty * rate;
+  }
+
+  double get _subtotal => _rows.fold(0, (sum, r) => sum + _rowAmount(r));
+  double get _oldBalance => double.tryParse(_oldBalanceCtrl.text) ?? 0;
+  double get _total => _subtotal + _oldBalance;
+  double get _settledAmount => double.tryParse(_settledAmountCtrl.text) ?? 0;
+  double get _balance => _total - _settledAmount;
+
+  Future<void> _showAddCustomerDialog() async {
+    final nameCtrl = TextEditingController();
+    final obCtrl = TextEditingController(text: '0');
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('New Estimate Party'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(labelText: 'Party Name'),
+              autofocus: true,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: obCtrl,
+              decoration: const InputDecoration(labelText: 'Old Balance (OB)'),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              if (nameCtrl.text.isEmpty) return;
+              final newCustomer = EstimateCustomer(
+                name: nameCtrl.text,
+                ob: double.tryParse(obCtrl.text) ?? 0,
+              );
+              Navigator.pop(dialogContext);
+              
+              try {
+                final saved = await getIt<EstimateController>().createEstimateCustomer(newCustomer);
+                if (saved != null && mounted) {
+                  setState(() {
+                    _customers.add(saved);
+                    _customerCtrl.text = saved.name;
+                    _oldBalanceCtrl.text = saved.ob.toStringAsFixed(2);
+                  });
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error saving party: $e'), backgroundColor: AppColors.error),
+                  );
+                }
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showAddProductDialog(int rowIndex) async {
+    final nameCtrl = TextEditingController();
+    final unitCtrl = TextEditingController(text: 'PCS');
+    final rateCtrl = TextEditingController(text: '0');
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('New Estimate Product'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(labelText: 'Particulars'),
+              autofocus: true,
+            ),
+            const SizedBox(height: 16),
+            Builder(
+              builder: (ctx) {
+                final FocusNode unitDialogFocusNode = FocusNode();
+                unitDialogFocusNode.onKeyEvent = (node, event) {
+                  if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.space) {
+                    _showUnitSelectionDialog((u) => unitCtrl.text = u);
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                };
+                return TextFormField(
+                  controller: unitCtrl,
+                  focusNode: unitDialogFocusNode,
+                  decoration: const InputDecoration(labelText: 'Unit (Press Spacebar to select)'),
+                );
+              }
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: rateCtrl,
+              decoration: const InputDecoration(labelText: 'Rate'),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              if (nameCtrl.text.isEmpty) return;
+              final newProduct = EstimateProduct(
+                particular: nameCtrl.text,
+                unit: unitCtrl.text,
+                rate: double.tryParse(rateCtrl.text) ?? 0,
+              );
+              Navigator.pop(dialogContext);
+              
+              try {
+                final saved = await getIt<EstimateController>().createEstimateProduct(newProduct);
+                if (saved != null && mounted) {
+                  setState(() {
+                    _products.add(saved);
+                    _rows[rowIndex].particularCtr.text = saved.particular;
+                    _rows[rowIndex].unitCtr.text = saved.unit;
+                    _rows[rowIndex].rateCtr.text = saved.rate.toStringAsFixed(2);
+                  });
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error saving product: $e'), backgroundColor: AppColors.error),
+                  );
+                }
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showCustomerSearchDialog() async {
+    final searchCtrl = TextEditingController();
+    List<EstimateCustomer> filtered = List.from(_customers);
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Search Customers'),
+              content: SizedBox(
+                width: 400,
+                height: 400,
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: searchCtrl,
+                      decoration: const InputDecoration(labelText: 'Search...', prefixIcon: Icon(Icons.search)),
+                      autofocus: true,
+                      onChanged: (v) {
+                        setDialogState(() {
+                          filtered = _customers.where((c) => c.name.toLowerCase().contains(v.toLowerCase())).toList();
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) {
+                          final c = filtered[index];
+                          return ListTile(
+                            title: Text(c.name),
+                            subtitle: Text('OB: ${c.ob.toStringAsFixed(2)}'),
+                            onTap: () {
+                              setState(() {
+                                _customerCtrl.text = c.name;
+                                _oldBalanceCtrl.text = c.ob.toStringAsFixed(2);
+                              });
+                              Navigator.pop(context);
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showProductSearchDialog(int rowIndex) async {
+    final searchCtrl = TextEditingController();
+    List<EstimateProduct> filtered = List.from(_products);
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Search Products'),
+              content: SizedBox(
+                width: 400,
+                height: 400,
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: searchCtrl,
+                      decoration: const InputDecoration(labelText: 'Search...', prefixIcon: Icon(Icons.search)),
+                      autofocus: true,
+                      onChanged: (v) {
+                        setDialogState(() {
+                          filtered = _products.where((p) => p.particular.toLowerCase().contains(v.toLowerCase())).toList();
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) {
+                          final p = filtered[index];
+                          return ListTile(
+                            title: Text(p.particular),
+                            subtitle: Text('Rate: ${p.rate.toStringAsFixed(2)} | Unit: ${p.unit}'),
+                            onTap: () {
+                              setState(() {
+                                _rows[rowIndex].particularCtr.text = p.particular;
+                                _rows[rowIndex].unitCtr.text = p.unit;
+                                _rows[rowIndex].rateCtr.text = p.rate.toStringAsFixed(2);
+                              });
+                              Navigator.pop(context);
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showSuccessDialog(Estimate savedEstimate) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle, color: AppColors.success),
+            SizedBox(width: 8),
+            Text('Estimate Saved'),
+          ],
+        ),
+        content: const Text('Your estimate has been successfully saved. What would you like to do next?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Close dialog
+            },
+            child: const Text('Edit'),
+          ),
+          PopupMenuButton<String>(
+            child: TextButton(
+              onPressed: null, // Disable default press, let popup handle it
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Icon(Icons.print, size: 18),
+                  SizedBox(width: 4),
+                  Text('Print'),
+                  Icon(Icons.arrow_drop_down, size: 18),
+                ],
+              ),
+            ),
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'A4', child: Text('Print A4')),
+              const PopupMenuItem(value: 'A5', child: Text('Print A5')),
+              const PopupMenuItem(value: 'POS', child: Text('Print POS (Thermal)')),
+            ],
+            onSelected: (format) {
+              _printEstimate(format, savedEstimate);
+            },
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context); // Close dialog
+              context.pop(); // Go back to Estimate Page
+            },
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _printEstimate(String format, Estimate estimate) {
+    Navigator.of(context, rootNavigator: true).pop(); // Force close the dialog
+    
+    // Navigate to PDF preview
+    context.push(
+      '/estimate-preview',
+      extra: {
+        'estimate': estimate,
+        'formatType': format,
+      },
+    );
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSaving = true);
+    try {
+      final items = _rows
+          .where((r) => r.particularCtr.text.isNotEmpty)
+          .map(
+            (r) => EstimateItem(
+              particular: r.particularCtr.text,
+              qty: double.tryParse(r.qtyCtr.text) ?? 1,
+              unit: r.unitCtr.text,
+              rate: double.tryParse(r.rateCtr.text) ?? 0,
+              amount: _rowAmount(r),
+            ),
+          )
+          .toList();
+
+      if (items.isEmpty) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: const Text('Please enter at least one item.'), backgroundColor: AppColors.error),
+        );
+        return;
+      }
+
+      final estimate = Estimate(
+        id: '',
+        estimateNumber: _estimateNoCtrl.text,
+        date: _date,
+        customerName: _customerCtrl.text,
+        items: items,
+        subtotal: _subtotal,
+        oldBalance: _oldBalance,
+        total: _total,
+        settledAmount: _settledAmount,
+        balance: _balance,
+      );
+
+      final savedEstimate = await getIt<EstimateController>().saveEstimate(estimate);
+
+      if (mounted) {
+        if (savedEstimate != null) {
+          _showSuccessDialog(savedEstimate);
+        } else {
+          // Fallback if save returned null
+          _showSuccessDialog(estimate);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(24.w),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeader(),
+                    SizedBox(height: 24.h),
+                    _buildHeaderCard(),
+                    SizedBox(height: 16.h),
+                    _buildItemsCard(),
+                    SizedBox(height: 16.h),
+                    _buildSummaryCard(),
+                    SizedBox(height: 80.h),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          _buildFooter(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Row(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/estimates'),
+        ),
+        SizedBox(width: 8.w),
+        Expanded(
+          child: Text(
+            'New Estimate Bill',
+            style: TextStyle(
+              fontSize: 22.sp,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeaderCard() {
+    return Card(
+      child: Padding(
+        padding: EdgeInsets.all(20.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Details', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
+            SizedBox(height: 16.h),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(child: _labelField('Estimate No.', _estimateNoCtrl)),
+                SizedBox(width: 16.w),
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          RichText(
+                            text: TextSpan(
+                              text: 'Customer Name (M/s)',
+                              style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                              children: [TextSpan(text: ' *', style: TextStyle(color: AppColors.error))],
+                            ),
+                          ),
+                          SizedBox(width: 8.w),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
+                            child: Text('Press Ctrl+F1 to Create | Ctrl+F2 to List', style: TextStyle(fontSize: 10.sp, color: AppColors.primary)),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 8.h),
+                      Autocomplete<EstimateCustomer>(
+                        displayStringForOption: (option) => option.name,
+                        optionsBuilder: (textEditingValue) {
+                          if (textEditingValue.text.trim().isEmpty) return _customers;
+                          return _customers.where((c) => c.name.toLowerCase().contains(textEditingValue.text.toLowerCase()));
+                        },
+                        onSelected: (selection) {
+                          setState(() {
+                            _customerCtrl.text = selection.name;
+                            _oldBalanceCtrl.text = selection.ob.toStringAsFixed(2);
+                          });
+                        },
+                        fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
+                          // Sync controllers
+                          controller.text = _customerCtrl.text;
+                          controller.addListener(() => _customerCtrl.text = controller.text);
+                          
+                          // Transfer FocusNode onKeyEvent
+                          focusNode.onKeyEvent = _customerFocusNode.onKeyEvent;
+                          
+                          return TextFormField(
+                            controller: controller,
+                            focusNode: focusNode,
+                            decoration: InputDecoration(
+                              hintText: 'Search or type customer...',
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                              suffixIcon: IconButton(
+                                icon: const Icon(Icons.add_circle_outline),
+                                onPressed: _showAddCustomerDialog,
+                                tooltip: 'Create Party (Ctrl+F1)',
+                              ),
+                            ),
+                            validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: 16.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Date', style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                      SizedBox(height: 8.h),
+                      InkWell(
+                        onTap: () async {
+                          final d = await showDatePicker(
+                            context: context,
+                            initialDate: _date,
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime(2100),
+                          );
+                          if (d != null) setState(() => _date = d);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: AppColors.border),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(DateFormat('dd MMM yyyy').format(_date)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildItemsCard() {
+    return Card(
+      child: Padding(
+        padding: EdgeInsets.all(20.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Text('Items', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
+                    SizedBox(width: 12.w),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
+                      child: Text('Press F1 on Particulars to Create Product', style: TextStyle(fontSize: 11.sp, color: AppColors.primary)),
+                    ),
+                  ],
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    final row = _ItemRow();
+                    setState(() => _rows.add(row));
+                    _setupRowFocusListener(row, _rows.length - 1);
+                  },
+                  icon: Icon(Icons.add, size: 16.sp),
+                  label: const Text('Add Row'),
+                ),
+              ],
+            ),
+            SizedBox(height: 12.h),
+            _buildTableHeader(),
+            const Divider(height: 1),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _rows.length,
+              separatorBuilder: (_, __) => Divider(height: 1, color: AppColors.divider),
+              itemBuilder: (_, i) {
+                if (_rows[i].focusNode.onKeyEvent == null) {
+                  _setupRowFocusListener(_rows[i], i);
+                }
+                return _buildItemRow(i);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTableHeader() {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 10.h),
+      decoration: BoxDecoration(
+        color: AppColors.secondary.withValues(alpha: 0.07),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(width: 36.w),
+          Expanded(flex: 1, child: _headerText('Qty')),
+          SizedBox(width: 8.w),
+          Expanded(flex: 3, child: _headerText('Particulars')),
+          SizedBox(width: 8.w),
+          Expanded(flex: 1, child: _headerText('Unit')),
+          SizedBox(width: 8.w),
+          Expanded(flex: 2, child: _headerText('Rate')),
+          SizedBox(width: 8.w),
+          Expanded(flex: 2, child: _headerText('Amount', align: TextAlign.right)),
+        ],
+      ),
+    );
+  }
+
+  Widget _headerText(String text, {TextAlign align = TextAlign.left}) {
+    return Text(
+      text,
+      textAlign: align,
+      style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: AppColors.secondary),
+    );
+  }
+
+  Widget _buildItemRow(int i) {
+    final row = _rows[i];
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints: BoxConstraints(minWidth: 28.w, minHeight: 28.w),
+            icon: Icon(Icons.remove_circle_outline, size: 18.sp, color: AppColors.error),
+            onPressed: _rows.length == 1 ? null : () => setState(() {
+              _rows[i].dispose();
+              _rows.removeAt(i);
+            }),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(flex: 1, child: _compactField(row.qtyCtr, 'Qty', onChanged: (_) => setState(() {}))),
+          SizedBox(width: 8.w),
+          Expanded(
+            flex: 3,
+            child: Autocomplete<EstimateProduct>(
+              displayStringForOption: (option) => option.particular,
+              optionsBuilder: (textEditingValue) {
+                if (textEditingValue.text.trim().isEmpty) return _products;
+                return _products.where((p) => p.particular.toLowerCase().contains(textEditingValue.text.toLowerCase()));
+              },
+              onSelected: (selection) {
+                setState(() {
+                  row.particularCtr.text = selection.particular;
+                  row.unitCtr.text = selection.unit;
+                  row.rateCtr.text = selection.rate.toStringAsFixed(2);
+                });
+              },
+              fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
+                controller.text = row.particularCtr.text;
+                controller.addListener(() => row.particularCtr.text = controller.text);
+                
+                focusNode.onKeyEvent = row.focusNode.onKeyEvent;
+
+                return TextFormField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  decoration: InputDecoration(
+                    hintText: 'Particulars',
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.add_box_outlined, size: 20),
+                      onPressed: () => _showAddProductDialog(i),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ),
+                  style: TextStyle(fontSize: 13.sp),
+                  onChanged: (_) => setState(() {}),
+                );
+              },
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(
+            flex: 1,
+            child: TextFormField(
+              controller: row.unitCtr,
+              focusNode: row.unitFocusNode,
+              decoration: InputDecoration(
+                hintText: 'Unit',
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.arrow_drop_down),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () {
+                    _showUnitSelectionDialog((u) => setState(() => row.unitCtr.text = u));
+                  },
+                ),
+              ),
+              style: TextStyle(fontSize: 13.sp),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(flex: 2, child: _compactField(row.rateCtr, '0.00', onChanged: (_) => setState(() {}))),
+          SizedBox(width: 8.w),
+          Expanded(
+            flex: 2,
+            child: Text(
+              '₹${_rowAmount(row).toStringAsFixed(2)}',
+              textAlign: TextAlign.right,
+              style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryCard() {
+    return Card(
+      child: Padding(
+        padding: EdgeInsets.all(20.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            SizedBox(
+              width: 300.w,
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Subtotal', style: TextStyle(fontSize: 14.sp)),
+                      Text('₹${_subtotal.toStringAsFixed(2)}', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  SizedBox(height: 12.h),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Old Balance (OB)', style: TextStyle(fontSize: 14.sp)),
+                      SizedBox(
+                        width: 120.w,
+                        child: TextField(
+                          controller: _oldBalanceCtrl,
+                          textAlign: TextAlign.right,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Total Amount', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w900)),
+                      Text(
+                        '₹${_total.toStringAsFixed(2)}',
+                        style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.w900, color: AppColors.secondary),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text('Settled Amount (Received)', style: TextStyle(fontSize: 14.sp), overflow: TextOverflow.ellipsis),
+                      ),
+                      SizedBox(width: 8.w),
+                      SizedBox(
+                        width: 120.w,
+                        child: TextField(
+                          controller: _settledAmountCtrl,
+                          textAlign: TextAlign.right,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            prefixText: '₹ ',
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text('New Balance (OB)', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w900, color: AppColors.error), overflow: TextOverflow.ellipsis),
+                      ),
+                      Text(
+                        '₹${_balance.toStringAsFixed(2)}',
+                        style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.w900, color: AppColors.error),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFooter() {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        border: Border(top: BorderSide(color: AppColors.divider)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(
+            onPressed: () => context.go('/estimates'),
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
+            ),
+            child: const Text('Cancel'),
+          ),
+          SizedBox(width: 16.w),
+          ElevatedButton.icon(
+            onPressed: _isSaving ? null : _save,
+            icon: _isSaving
+                ? SizedBox(width: 16.sp, height: 16.sp, child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.save_outlined),
+            label: Text(_isSaving ? 'Saving...' : 'Save Estimate'),
+            style: ElevatedButton.styleFrom(
+              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _labelField(String label, TextEditingController controller, {bool required = false, int maxLines = 1, String? hint}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        RichText(
+          text: TextSpan(
+            text: label,
+            style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+            children: [
+              if (required) TextSpan(text: ' *', style: TextStyle(color: AppColors.error)),
+            ],
+          ),
+        ),
+        SizedBox(height: 8.h),
+        TextFormField(
+          controller: controller,
+          maxLines: maxLines,
+          decoration: InputDecoration(
+            hintText: hint,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          ),
+          validator: required ? (v) => v == null || v.isEmpty ? 'Required' : null : null,
+        ),
+      ],
+    );
+  }
+
+  Widget _compactField(TextEditingController controller, String hint, {ValueChanged<String>? onChanged}) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        hintText: hint,
+        isDense: true,
+        contentPadding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
+      ),
+      style: TextStyle(fontSize: 13.sp),
+      onChanged: onChanged,
+    );
+  }
+}

@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/utils/gst_calculator.dart';
+import 'package:billy_way/core/theme/app_colors.dart';
+import 'package:billy_way/core/utils/gst_calculator.dart';
+import 'package:billy_way/main.dart';
+import 'package:billy_way/features/sales/data/models/sales_invoice.dart';
+import 'package:billy_way/features/sales/domain/controllers/sales_controller.dart';
+import 'package:billy_way/features/sales/presentation/widgets/invoice_preview_widget.dart';
 
 class NewInvoicePage extends StatefulWidget {
   const NewInvoicePage({super.key});
@@ -13,8 +17,21 @@ class NewInvoicePage extends StatefulWidget {
 
 class _NewInvoicePageState extends State<NewInvoicePage> {
   final _formKey = GlobalKey<FormState>();
+  
+  // Controllers
+  final _invoiceNumberController = TextEditingController(text: 'INV-2425-0042');
+  final _poNumberController = TextEditingController();
   final _dateController = TextEditingController(text: DateFormat('dd MMM yyyy').format(DateTime.now()));
   final _dueDateController = TextEditingController(text: DateFormat('dd MMM yyyy').format(DateTime.now().add(const Duration(days: 15))));
+  
+  final _customerNameController = TextEditingController();
+  final _mobileController = TextEditingController();
+  final _gstinController = TextEditingController();
+  final _billingAddressController = TextEditingController();
+  final _shippingAddressController = TextEditingController();
+  
+  final _paymentMethodController = TextEditingController(text: 'Bank Transfer');
+  final _statusController = TextEditingController(text: 'Unpaid');
 
   // Items List
   final List<InvoiceItem> _items = [
@@ -28,6 +45,8 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
   double _cgst = 0;
   double _sgst = 0;
   double _igst = 0;
+
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -46,7 +65,6 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
       subtotal += lineTaxable;
 
       // Assuming Intra-state for now (CGST+SGST)
-      // In a real app, this would depend on Customer's GSTIN vs Branch's GSTIN
       bool isInterState = false; 
       var gstBreakdown = GstCalculator.calculate(
         taxableAmount: lineTaxable,
@@ -69,6 +87,84 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
     });
   }
 
+  Future<void> _saveInvoice({bool showPreview = true}) async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      final invoice = SalesInvoice(
+        invoiceNumber: _invoiceNumberController.text,
+        poNumber: _poNumberController.text.isEmpty ? null : _poNumberController.text,
+        date: DateFormat('dd MMM yyyy').parse(_dateController.text),
+        dueDate: DateFormat('dd MMM yyyy').parse(_dueDateController.text),
+        customerName: _customerNameController.text.isEmpty ? 'Walk-in Customer' : _customerNameController.text,
+        mobileNumber: _mobileController.text,
+        gstin: _gstinController.text,
+        billingAddress: _billingAddressController.text,
+        shippingAddress: _shippingAddressController.text,
+        items: _items,
+        subtotal: _subtotal,
+        totalTax: _totalTax,
+        cgst: _cgst,
+        sgst: _sgst,
+        igst: _igst,
+        totalAmount: _totalAmount,
+        paymentMethod: _paymentMethodController.text,
+        status: _statusController.text,
+      );
+
+      final savedInvoice = await getIt<SalesController>().saveInvoice(invoice);
+
+      setState(() => _isSaving = false);
+
+      if (mounted && savedInvoice != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invoice saved successfully!'), backgroundColor: Colors.green),
+        );
+        
+        if (showPreview) {
+          _showPreview(savedInvoice);
+        }
+      }
+    } catch (e) {
+      setState(() => _isSaving = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving invoice: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _showPreview([SalesInvoice? invoice]) {
+    final invoiceToPreview = invoice ?? SalesInvoice(
+      invoiceNumber: _invoiceNumberController.text,
+      poNumber: _poNumberController.text,
+      date: DateFormat('dd MMM yyyy').parse(_dateController.text),
+      dueDate: DateFormat('dd MMM yyyy').parse(_dueDateController.text),
+      customerName: _customerNameController.text.isEmpty ? 'Walk-in Customer' : _customerNameController.text,
+      mobileNumber: _mobileController.text,
+      gstin: _gstinController.text,
+      billingAddress: _billingAddressController.text,
+      shippingAddress: _shippingAddressController.text,
+      items: _items,
+      subtotal: _subtotal,
+      totalTax: _totalTax,
+      cgst: _cgst,
+      sgst: _sgst,
+      igst: _igst,
+      totalAmount: _totalAmount,
+      paymentMethod: _paymentMethodController.text,
+      status: _statusController.text,
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => InvoicePreviewWidget(invoice: invoiceToPreview),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     bool isSmallScreen = MediaQuery.of(context).size.width < 1100;
@@ -76,55 +172,65 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.all(isMobile ? 16.w : 24.w),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildHeader(isMobile),
-                    SizedBox(height: 24.h),
-                    if (isSmallScreen) ...[
-                      _buildInvoiceDetailsCard(isMobile),
-                      SizedBox(height: 16.h),
-                      _buildCustomerDetailsCard(isMobile),
-                      SizedBox(height: 16.h),
-                      _buildItemsTableCard(isMobile),
-                      SizedBox(height: 16.h),
-                      _buildSummarySidebar(isMobile),
-                    ] else
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: Column(
-                              children: [
-                                _buildInvoiceDetailsCard(isMobile),
-                                SizedBox(height: 24.h),
-                                _buildCustomerDetailsCard(isMobile),
-                                SizedBox(height: 24.h),
-                                _buildItemsTableCard(isMobile),
-                              ],
-                            ),
+          Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.all(isMobile ? 16.w : 24.w),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildHeader(isMobile),
+                        SizedBox(height: 24.h),
+                        if (isSmallScreen) ...[
+                          _buildInvoiceDetailsCard(isMobile),
+                          SizedBox(height: 16.h),
+                          _buildCustomerDetailsCard(isMobile),
+                          SizedBox(height: 16.h),
+                          _buildItemsTableCard(isMobile),
+                          SizedBox(height: 16.h),
+                          _buildSummarySidebar(isMobile),
+                        ] else
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Column(
+                                  children: [
+                                    _buildInvoiceDetailsCard(isMobile),
+                                    SizedBox(height: 24.h),
+                                    _buildCustomerDetailsCard(isMobile),
+                                    SizedBox(height: 24.h),
+                                    _buildItemsTableCard(isMobile),
+                                  ],
+                                ),
+                              ),
+                              SizedBox(width: 24.w),
+                              Expanded(
+                                flex: 1,
+                                child: _buildSummarySidebar(isMobile),
+                              ),
+                            ],
                           ),
-                          SizedBox(width: 24.w),
-                          Expanded(
-                            flex: 1,
-                            child: _buildSummarySidebar(isMobile),
-                          ),
-                        ],
-                      ),
-                  ],
+                        SizedBox(height: 100.h), // Space for footer
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
+              _buildStickyFooter(isMobile),
+            ],
           ),
-          _buildStickyFooter(isMobile),
+          if (_isSaving)
+            Container(
+              color: Colors.black26,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
         ],
       ),
     );
@@ -148,7 +254,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
             ),
           ),
         ),
-        if (!isMobile) _buildStatusChip('Draft'),
+        if (!isMobile) _buildStatusChip(_statusController.text),
       ],
     );
   }
@@ -181,9 +287,9 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
             _buildSectionTitle(Icons.description_outlined, 'Invoice Details'),
             SizedBox(height: 24.h),
             if (isMobile) ...[
-              _buildTextField('Invoice Number', initialValue: 'INV-2425-0042'),
+              _buildTextField('Invoice Number', controller: _invoiceNumberController),
               SizedBox(height: 16.h),
-              _buildTextField('PO Number', hint: 'Optional PO #'),
+              _buildTextField('PO Number', controller: _poNumberController, hint: 'Optional PO #'),
               SizedBox(height: 16.h),
               _buildTextField('Invoice Date', controller: _dateController, suffixIcon: Icons.calendar_today),
               SizedBox(height: 16.h),
@@ -191,9 +297,9 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
             ] else ...[
               Row(
                 children: [
-                  Expanded(child: _buildTextField('Invoice Number', initialValue: 'INV-2425-0042')),
+                  Expanded(child: _buildTextField('Invoice Number', controller: _invoiceNumberController)),
                   SizedBox(width: 16.w),
-                  Expanded(child: _buildTextField('PO Number', hint: 'Optional PO #')),
+                  Expanded(child: _buildTextField('PO Number', controller: _poNumberController, hint: 'Optional PO #')),
                 ],
               ),
               SizedBox(height: 16.h),
@@ -221,32 +327,32 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
             _buildSectionTitle(Icons.person_outline, 'Customer Details'),
             SizedBox(height: 24.h),
             if (isMobile) ...[
-              _buildTextField('Customer Name', hint: 'Search or enter name', prefixIcon: Icons.search),
+              _buildTextField('Customer Name', controller: _customerNameController, hint: 'Search or enter name', prefixIcon: Icons.search),
               SizedBox(height: 16.h),
-              _buildTextField('Mobile Number', prefixText: '+91 '),
+              _buildTextField('Mobile Number', controller: _mobileController, prefixText: '+91 '),
               SizedBox(height: 16.h),
-              _buildTextField('GSTIN', hint: '27AAAAA0000A1Z5'),
+              _buildTextField('GSTIN', controller: _gstinController, hint: '27AAAAA0000A1Z5'),
             ] else
               Row(
                 children: [
-                  Expanded(flex: 2, child: _buildTextField('Customer Name', hint: 'Search or enter name', prefixIcon: Icons.search)),
+                  Expanded(flex: 2, child: _buildTextField('Customer Name', controller: _customerNameController, hint: 'Search or enter name', prefixIcon: Icons.search)),
                   SizedBox(width: 16.w),
-                  Expanded(child: _buildTextField('Mobile Number', prefixText: '+91 ')),
+                  Expanded(child: _buildTextField('Mobile Number', controller: _mobileController, prefixText: '+91 ')),
                   SizedBox(width: 16.w),
-                  Expanded(child: _buildTextField('GSTIN', hint: '27AAAAA0000A1Z5')),
+                  Expanded(child: _buildTextField('GSTIN', controller: _gstinController, hint: '27AAAAA0000A1Z5')),
                 ],
               ),
             SizedBox(height: 16.h),
             if (isMobile) ...[
-              _buildTextField('Billing Address', maxLines: 2),
+              _buildTextField('Billing Address', controller: _billingAddressController, maxLines: 2),
               SizedBox(height: 16.h),
-              _buildTextField('Shipping Address', maxLines: 2, hint: 'Same as billing'),
+              _buildTextField('Shipping Address', controller: _shippingAddressController, maxLines: 2, hint: 'Same as billing'),
             ] else
               Row(
                 children: [
-                  Expanded(child: _buildTextField('Billing Address', maxLines: 2)),
+                  Expanded(child: _buildTextField('Billing Address', controller: _billingAddressController, maxLines: 2)),
                   SizedBox(width: 16.w),
-                  Expanded(child: _buildTextField('Shipping Address', maxLines: 2, hint: 'Same as billing')),
+                  Expanded(child: _buildTextField('Shipping Address', controller: _shippingAddressController, maxLines: 2, hint: 'Same as billing')),
                 ],
               ),
           ],
@@ -316,7 +422,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
         children: [
           Row(
             children: [
-              Expanded(child: _buildTableField(hint: 'Item name', onChanged: (v) => item.name = v)),
+              Expanded(child: _buildTableField(hint: 'Item name', initialValue: item.name, onChanged: (v) => item.name = v)),
               IconButton(
                 icon: Icon(Icons.delete_outline, color: AppColors.error, size: 20.sp),
                 onPressed: () {
@@ -328,17 +434,17 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
           ),
           Row(
             children: [
-              Expanded(child: _buildTableField(hint: 'HSN', onChanged: (v) => item.hsn = v)),
+              Expanded(child: _buildTableField(hint: 'HSN', initialValue: item.hsn, onChanged: (v) => item.hsn = v)),
               SizedBox(width: 8.w),
               Expanded(
-                child: _buildTableField(initialValue: '1', onChanged: (v) {
+                child: _buildTableField(initialValue: item.qty.toString(), onChanged: (v) {
                   item.qty = double.tryParse(v) ?? 0;
                   _calculateTotals();
                 }),
               ),
               SizedBox(width: 8.w),
               Expanded(
-                child: _buildTableField(initialValue: '0.00', onChanged: (v) {
+                child: _buildTableField(initialValue: item.rate.toString(), onChanged: (v) {
                   item.rate = double.tryParse(v) ?? 0;
                   _calculateTotals();
                 }),
@@ -396,18 +502,18 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
       padding: EdgeInsets.symmetric(vertical: 8.h, horizontal: 8.w),
       child: Row(
         children: [
-          Expanded(flex: 4, child: _buildTableField(hint: 'Enter item name', onChanged: (v) => item.name = v)),
+          Expanded(flex: 4, child: _buildTableField(hint: 'Enter item name', initialValue: item.name, onChanged: (v) => item.name = v)),
           SizedBox(width: 8.w),
-          Expanded(flex: 2, child: _buildTableField(hint: 'HSN', onChanged: (v) => item.hsn = v)),
+          Expanded(flex: 2, child: _buildTableField(hint: 'HSN', initialValue: item.hsn, onChanged: (v) => item.hsn = v)),
           SizedBox(width: 8.w),
-          Expanded(child: _buildTableField(initialValue: '1', onChanged: (v) {
+          Expanded(child: _buildTableField(initialValue: item.qty.toString(), onChanged: (v) {
             item.qty = double.tryParse(v) ?? 0;
             _calculateTotals();
           })),
           SizedBox(width: 8.w),
-          Expanded(child: _buildTableField(initialValue: 'PCS', onChanged: (v) => item.unit = v)),
+          Expanded(child: _buildTableField(initialValue: item.unit, onChanged: (v) => item.unit = v)),
           SizedBox(width: 8.w),
-          Expanded(flex: 2, child: _buildTableField(initialValue: '0.00', onChanged: (v) {
+          Expanded(flex: 2, child: _buildTableField(initialValue: item.rate.toString(), onChanged: (v) {
             item.rate = double.tryParse(v) ?? 0;
             _calculateTotals();
           })),
@@ -478,9 +584,9 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
                   ],
                 ),
                 SizedBox(height: 24.h),
-                _buildTextField('Payment Method', initialValue: 'Bank Transfer', isDropdown: true),
+                _buildTextField('Payment Method', controller: _paymentMethodController, isDropdown: true),
                 SizedBox(height: 16.h),
-                _buildTextField('Status', initialValue: 'Unpaid', isDropdown: true),
+                _buildTextField('Status', controller: _statusController, isDropdown: true),
               ],
             ),
           ),
@@ -503,7 +609,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
             SizedBox(height: 16.h),
             Text('${_items.length} Items in this invoice', style: TextStyle(color: Colors.white, fontSize: 14.sp)),
             SizedBox(height: 8.h),
-            Text('GST is ${( (_totalTax/_subtotal) * 100 ).toStringAsFixed(1)}% of taxable', style: TextStyle(color: Colors.white70, fontSize: 12.sp)),
+            Text('GST is ${(_subtotal == 0 ? 0 : (_totalTax/_subtotal) * 100).toStringAsFixed(1)}% of taxable', style: TextStyle(color: Colors.white70, fontSize: 12.sp)),
           ],
         ),
       ),
@@ -516,28 +622,35 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: AppColors.border)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -5)),
+        ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           OutlinedButton.icon(
-            onPressed: () {},
+            onPressed: () => _showPreview(),
             icon: const Icon(Icons.remove_red_eye_outlined),
             label: const Text('Preview'),
+            style: OutlinedButton.styleFrom(padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h)),
           ),
           SizedBox(width: 16.w),
           OutlinedButton.icon(
             onPressed: () {},
             icon: const Icon(Icons.picture_as_pdf_outlined),
             label: const Text('Download PDF'),
+            style: OutlinedButton.styleFrom(padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h)),
           ),
           SizedBox(width: 16.w),
           ElevatedButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.save),
-            label: const Text('Save Invoice'),
+            onPressed: _isSaving ? null : () => _saveInvoice(),
+            icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save),
+            label: Text(_isSaving ? 'Saving...' : 'Save Invoice'),
             style: ElevatedButton.styleFrom(
               padding: EdgeInsets.symmetric(horizontal: 32.w, vertical: 16.h),
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
             ),
           ),
         ],
@@ -557,7 +670,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
     );
   }
 
-  Widget _buildTextField(String label, {String? hint, String? initialValue, TextEditingController? controller, IconData? prefixIcon, IconData? suffixIcon, String? prefixText, int maxLines = 1, bool isDropdown = false}) {
+  Widget _buildTextField(String label, {String? hint, TextEditingController? controller, IconData? prefixIcon, IconData? suffixIcon, String? prefixText, int maxLines = 1, bool isDropdown = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -565,7 +678,6 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
         SizedBox(height: 8.h),
         TextFormField(
           controller: controller,
-          initialValue: initialValue,
           maxLines: maxLines,
           readOnly: isDropdown,
           decoration: InputDecoration(
@@ -575,6 +687,12 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
             suffixIcon: isDropdown ? const Icon(Icons.keyboard_arrow_down) : (suffixIcon != null ? Icon(suffixIcon, size: 18.sp) : null),
             contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
           ),
+          validator: (value) {
+            if (label == 'Invoice Number' && (value == null || value.isEmpty)) {
+              return 'Required';
+            }
+            return null;
+          },
         ),
       ],
     );
@@ -608,22 +726,4 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
       ),
     );
   }
-}
-
-class InvoiceItem {
-  String name;
-  String hsn;
-  double qty;
-  String unit;
-  double rate;
-  double gstRate;
-
-  InvoiceItem({
-    required this.name,
-    required this.hsn,
-    required this.qty,
-    this.unit = 'PCS',
-    required this.rate,
-    required this.gstRate,
-  });
 }
