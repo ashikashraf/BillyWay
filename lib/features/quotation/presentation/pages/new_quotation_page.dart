@@ -385,38 +385,47 @@ class _NewQuotationPageState extends State<NewQuotationPage> {
   // ── Header Info Card ───────────────────────────────────────────────────────
 
   Widget _buildHeaderCard() {
+    final isDesktop = MediaQuery.of(context).size.width >= 800;
+    
+    final quotNoField = _labelField('Quotation No.', _quotNoCtrl);
+    final dateField = _datePicker('Date', _date, (d) => setState(() => _date = d));
+    final validUntilField = _datePicker('Valid Until', _validUntil, (d) => setState(() => _validUntil = d));
+    final statusField = _statusPicker();
+
     return Card(
       child: Padding(
-        padding: EdgeInsets.all(20.w),
+        padding: EdgeInsets.all(isDesktop ? 20.w : 16.w),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _sectionTitle(Icons.receipt_long_outlined, 'Quotation Details'),
             SizedBox(height: 16.h),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _labelField('Quotation No.', _quotNoCtrl)),
-                SizedBox(width: 16.w),
-                Expanded(
-                  child: _datePicker(
-                    'Date',
-                    _date,
-                    (d) => setState(() => _date = d),
-                  ),
-                ),
-                SizedBox(width: 16.w),
-                Expanded(
-                  child: _datePicker(
-                    'Valid Until',
-                    _validUntil,
-                    (d) => setState(() => _validUntil = d),
-                  ),
-                ),
-                SizedBox(width: 16.w),
-                Expanded(child: _statusPicker()),
-              ],
-            ),
+            if (isDesktop)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: quotNoField),
+                  SizedBox(width: 16.w),
+                  Expanded(child: dateField),
+                  SizedBox(width: 16.w),
+                  Expanded(child: validUntilField),
+                  SizedBox(width: 16.w),
+                  Expanded(child: statusField),
+                ],
+              )
+            else
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  quotNoField,
+                  SizedBox(height: 16.h),
+                  dateField,
+                  SizedBox(height: 16.h),
+                  validUntilField,
+                  SizedBox(height: 16.h),
+                  statusField,
+                ],
+              ),
           ],
         ),
       ),
@@ -456,47 +465,48 @@ class _NewQuotationPageState extends State<NewQuotationPage> {
   // ── Customer Card ──────────────────────────────────────────────────────────
 
   Widget _buildCustomerCard() {
+    final isDesktop = MediaQuery.of(context).size.width >= 800;
+
+    final nameField = _labelField('Customer Name', _customerCtrl, required: true);
+    final mobileField = _labelField('Mobile Number', _mobileCtrl);
+    final billingField = _labelField('Billing Address', _addressCtrl, maxLines: 2);
+    final shippingField = _labelField('Shipping Address', _shippingCtrl, maxLines: 2);
+
     return Card(
       child: Padding(
-        padding: EdgeInsets.all(20.w),
+        padding: EdgeInsets.all(isDesktop ? 20.w : 16.w),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _sectionTitle(Icons.person_outline, 'Customer Details'),
             SizedBox(height: 16.h),
-            Row(
-              children: [
-                Expanded(
-                  child: _labelField(
-                    'Customer Name',
-                    _customerCtrl,
-                    required: true,
-                  ),
-                ),
-                SizedBox(width: 16.w),
-                Expanded(child: _labelField('Mobile Number', _mobileCtrl)),
-              ],
-            ),
-            SizedBox(height: 12.h),
-            Row(
-              children: [
-                Expanded(
-                  child: _labelField(
-                    'Billing Address',
-                    _addressCtrl,
-                    maxLines: 2,
-                  ),
-                ),
-                SizedBox(width: 16.w),
-                Expanded(
-                  child: _labelField(
-                    'Shipping Address',
-                    _shippingCtrl,
-                    maxLines: 2,
-                  ),
-                ),
-              ],
-            ),
+            if (isDesktop) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: nameField),
+                  SizedBox(width: 16.w),
+                  Expanded(child: mobileField),
+                ],
+              ),
+              SizedBox(height: 12.h),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: billingField),
+                  SizedBox(width: 16.w),
+                  Expanded(child: shippingField),
+                ],
+              ),
+            ] else ...[
+              nameField,
+              SizedBox(height: 12.h),
+              mobileField,
+              SizedBox(height: 12.h),
+              billingField,
+              SizedBox(height: 12.h),
+              shippingField,
+            ],
           ],
         ),
       ),
@@ -534,17 +544,36 @@ class _NewQuotationPageState extends State<NewQuotationPage> {
               ],
             ),
             SizedBox(height: 12.h),
-            // Table header
-            _buildTableHeader(),
-            const Divider(height: 1),
-            // Item rows
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _rows.length,
-              separatorBuilder: (_, __) =>
-                  Divider(height: 1, color: AppColors.divider),
-              itemBuilder: (_, i) => _buildItemRow(i),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minWidth: constraints.maxWidth < 800 ? 800 : constraints.maxWidth,
+                    ),
+                    child: SizedBox(
+                      width: constraints.maxWidth < 800 ? 800 : constraints.maxWidth,
+                      child: Column(
+                        children: [
+                          // Table header
+                          _buildTableHeader(),
+                          const Divider(height: 1),
+                          // Item rows
+                          ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _rows.length,
+                            separatorBuilder: (_, __) =>
+                                Divider(height: 1, color: AppColors.divider),
+                            itemBuilder: (_, i) => _buildItemRow(i),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ],
         ),
@@ -805,43 +834,53 @@ class _NewQuotationPageState extends State<NewQuotationPage> {
                 borderRadius: BorderRadius.circular(8),
                 border: Border(top: BorderSide(color: AppColors.divider)),
               ),
-              child: Row(
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                runSpacing: 12.h,
                 children: [
-                  Icon(
-                    Icons.info_outline,
-                    size: 16.sp,
-                    color: AppColors.warning,
-                  ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: Text(
-                      'No tax applied — quotation price only',
-                      style: TextStyle(
-                        fontSize: 12.sp,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 16.sp,
                         color: AppColors.warning,
                       ),
-                    ),
-                  ),
-                  SizedBox(width: 16.w),
-                  Expanded(
-                    child: Text(
-                      'Total',
-                      style: TextStyle(
-                        fontSize: 16.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                      SizedBox(width: 8.w),
+                      Flexible(
+                        child: Text(
+                          'No tax applied — quotation price only',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            color: AppColors.warning,
+                          ),
+                        ),
                       ),
-                      textAlign: TextAlign.right,
-                    ),
+                    ],
                   ),
-                  SizedBox(width: 8.w),
-                  Text(
-                    '₹${_subtotal.toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontSize: 20.sp,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.secondary,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Total',
+                        style: TextStyle(
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                        textAlign: TextAlign.right,
+                      ),
+                      SizedBox(width: 16.w),
+                      Text(
+                        '₹${_subtotal.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 20.sp,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.secondary,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

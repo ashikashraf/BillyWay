@@ -75,8 +75,10 @@ class DashboardPage extends StatelessWidget {
             ],
           ),
           SizedBox(height: 16.h),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            runSpacing: 8.h,
             children: [
               _buildBranchChip(),
               Text(

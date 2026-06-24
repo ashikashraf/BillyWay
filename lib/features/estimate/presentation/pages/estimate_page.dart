@@ -67,8 +67,10 @@ class _EstimatePageState extends State<EstimatePage> {
   }
 
   Widget _buildHeader(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      runSpacing: 16.h,
       children: [
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -88,14 +90,16 @@ class _EstimatePageState extends State<EstimatePage> {
             ),
           ],
         ),
-        Row(
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8.w,
+          runSpacing: 8.h,
           children: [
             IconButton(
               tooltip: 'Refresh',
               icon: Icon(Icons.refresh, color: AppColors.textSecondary),
               onPressed: _loadEstimates,
             ),
-            SizedBox(width: 8.w),
             ElevatedButton.icon(
               onPressed: () async {
                 await context.push('/new-estimate');
@@ -119,6 +123,31 @@ class _EstimatePageState extends State<EstimatePage> {
   Widget _buildStatsRow() {
     final total = _estimates.length;
     final totalValue = _estimates.fold<double>(0, (sum, e) => sum + e.subtotal);
+
+    bool isMobile = MediaQuery.of(context).size.width < 600;
+
+    if (isMobile) {
+      return Column(
+        children: [
+          Row(
+            children: [
+              _buildStatCard('Total Estimates', '$total',
+                  Icons.request_quote_outlined, AppColors.secondary),
+            ],
+          ),
+          SizedBox(height: 16.h),
+          Row(
+            children: [
+              _buildStatCard(
+                  'Total Value',
+                  '₹ ${NumberFormat('#,##,###').format(totalValue.toInt())}',
+                  Icons.currency_rupee,
+                  AppColors.primary),
+            ],
+          ),
+        ],
+      );
+    }
 
     return Row(
       children: [
@@ -242,7 +271,8 @@ class _EstimatePageState extends State<EstimatePage> {
                   '₹ ${e.total.toStringAsFixed(2)}',
                   textAlign: TextAlign.right, style: TextStyle(fontWeight: FontWeight.bold))),
               DataCell(
-                Row(
+                Wrap(
+                  spacing: 4.w,
                   children: [
                     IconButton(
                       tooltip: 'Preview',

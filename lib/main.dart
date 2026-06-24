@@ -11,6 +11,7 @@ import 'package:billy_way/features/purchase/presentation/pages/new_purchase_page
 import 'package:billy_way/features/stock/presentation/pages/product_entry_page.dart';
 import 'package:billy_way/features/parties/presentation/pages/ledger_entry_page.dart';
 import 'package:billy_way/features/masters/presentation/pages/master_management_page.dart';
+import 'package:billy_way/features/auth/presentation/pages/splash_page.dart';
 import 'package:billy_way/features/auth/presentation/pages/login_page.dart';
 import 'package:billy_way/features/auth/presentation/pages/user_management_page.dart';
 import 'package:billy_way/features/quotation/presentation/pages/quotation_page.dart';
@@ -74,21 +75,26 @@ class BillyWayApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ScreenUtilInit(
-      designSize: const Size(
-        1440,
-        900,
-      ), // Standard Desktop size for responsiveness
-      minTextAdapt: true,
-      splitScreenMode: true,
-      builder: (context, child) {
-        return MaterialApp.router(
-          title: 'BillyWay ERP',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.lightTheme,
-          darkTheme: AppTheme.darkTheme,
-          themeMode: ThemeMode.system,
-          routerConfig: _router,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Use a mobile design size for narrow screens, and desktop for wide screens
+        final isMobile = constraints.maxWidth < 600;
+        final designSize = isMobile ? const Size(390, 844) : const Size(1440, 900);
+        
+        return ScreenUtilInit(
+          designSize: designSize,
+          minTextAdapt: true,
+          splitScreenMode: true,
+          builder: (context, child) {
+            return MaterialApp.router(
+              title: 'BillyWay ERP',
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.lightTheme,
+              darkTheme: AppTheme.darkTheme,
+              themeMode: ThemeMode.system,
+              routerConfig: _router,
+            );
+          },
         );
       },
     );
@@ -97,10 +103,13 @@ class BillyWayApp extends StatelessWidget {
 
 // Simple placeholder router
 final GoRouter _router = GoRouter(
-  initialLocation: '/login', // Start with login
+  initialLocation: '/splash', // Start with splash screen
   redirect: (context, state) {
     final session = Supabase.instance.client.auth.currentSession;
     final isLoggingIn = state.matchedLocation == '/login';
+    final isSplash = state.matchedLocation == '/splash';
+
+    if (isSplash) return null; // Allow splash screen always
 
     if (session == null) {
       return isLoggingIn ? null : '/login';
@@ -113,6 +122,7 @@ final GoRouter _router = GoRouter(
     return null;
   },
   routes: [
+    GoRoute(path: '/splash', builder: (context, state) => const SplashPage()),
     GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
     ShellRoute(
       builder: (context, state, child) => MainLayout(child: child),

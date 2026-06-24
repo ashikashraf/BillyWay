@@ -63,19 +63,38 @@ class _MainLayoutState extends State<MainLayout> {
   Widget build(BuildContext context) {
     bool isSmallScreen = MediaQuery.of(context).size.width < 900;
 
+    if (isSmallScreen) {
+      return Scaffold(
+        appBar: AppBar(
+          backgroundColor: AppColors.surface,
+          elevation: 1,
+          iconTheme: const IconThemeData(color: AppColors.textPrimary),
+          title: const Text(
+            'BillyWay ERP',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            ),
+          ),
+        ),
+        drawer: Drawer(
+          child: SideNav(
+            selectedIndex: _selectedIndex,
+            onDestinationSelected: (index) {
+              _onItemTapped(index);
+              Navigator.pop(context); // Close drawer after selection
+            },
+          ),
+        ),
+        body: Container(
+          color: AppColors.background,
+          child: widget.child,
+        ),
+      );
+    }
+
     return Scaffold(
-      bottomNavigationBar: isSmallScreen
-          ? NavigationBar(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: _onItemTapped,
-              destinations: const [
-                NavigationDestination(icon: Icon(Icons.dashboard_outlined), label: 'Home'),
-                NavigationDestination(icon: Icon(Icons.receipt_long_outlined), label: 'Sales'),
-                NavigationDestination(icon: Icon(Icons.inventory_2_outlined), label: 'Stock'),
-                NavigationDestination(icon: Icon(Icons.menu), label: 'More'),
-              ],
-            )
-          : null,
       body: Row(
         children: [
           SideNav(

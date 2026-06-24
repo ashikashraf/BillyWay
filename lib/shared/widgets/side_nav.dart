@@ -16,11 +16,6 @@ class SideNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    bool isSmallScreen = MediaQuery.of(context).size.width < 900;
-
-    if (isSmallScreen) {
-      return const SizedBox.shrink(); // Use BottomNav on mobile
-    }
 
     return Container(
       width: 260.w,

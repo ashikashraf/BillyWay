@@ -626,8 +626,10 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
           BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -5)),
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
+      child: Wrap(
+        alignment: WrapAlignment.end,
+        spacing: 16.w,
+        runSpacing: 8.h,
         children: [
           OutlinedButton.icon(
             onPressed: () => _showPreview(),
@@ -635,14 +637,12 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
             label: const Text('Preview'),
             style: OutlinedButton.styleFrom(padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h)),
           ),
-          SizedBox(width: 16.w),
           OutlinedButton.icon(
             onPressed: () {},
             icon: const Icon(Icons.picture_as_pdf_outlined),
             label: const Text('Download PDF'),
             style: OutlinedButton.styleFrom(padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h)),
           ),
-          SizedBox(width: 16.w),
           ElevatedButton.icon(
             onPressed: _isSaving ? null : () => _saveInvoice(),
             icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save),

@@ -189,9 +189,17 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
               SizedBox(height: 16.h),
               _buildTextField('Internal Ref #', initialValue: 'PUR-2425-0102'),
               SizedBox(height: 16.h),
-              _buildTextField('Bill Date', controller: _dateController, suffixIcon: Icons.calendar_today),
+              _buildTextField(
+                'Bill Date',
+                controller: _dateController,
+                suffixIcon: Icons.calendar_today,
+              ),
               SizedBox(height: 16.h),
-              _buildTextField('Due Date', controller: _dueDateController, suffixIcon: Icons.calendar_today),
+              _buildTextField(
+                'Due Date',
+                controller: _dueDateController,
+                suffixIcon: Icons.calendar_today,
+              ),
             ] else ...[
               Row(
                 children: [
@@ -247,7 +255,11 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
             _buildSectionTitle(Icons.business_outlined, 'Vendor Details'),
             SizedBox(height: 24.h),
             if (isMobile) ...[
-              _buildTextField('Vendor Name', hint: 'Search or enter vendor', prefixIcon: Icons.search),
+              _buildTextField(
+                'Vendor Name',
+                hint: 'Search or enter vendor',
+                prefixIcon: Icons.search,
+              ),
               SizedBox(height: 16.h),
               _buildTextField('Vendor GSTIN', hint: '27AAAAA0000A1Z5'),
             ] else
@@ -350,9 +362,18 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
         children: [
           Row(
             children: [
-              Expanded(child: _buildTableField(hint: 'Item name', onChanged: (v) => item.name = v)),
+              Expanded(
+                child: _buildTableField(
+                  hint: 'Item name',
+                  onChanged: (v) => item.name = v,
+                ),
+              ),
               IconButton(
-                icon: Icon(Icons.delete_outline, color: AppColors.error, size: 20.sp),
+                icon: Icon(
+                  Icons.delete_outline,
+                  color: AppColors.error,
+                  size: 20.sp,
+                ),
                 onPressed: () {
                   setState(() => _items.removeAt(index));
                   _calculateTotals();
@@ -362,20 +383,31 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
           ),
           Row(
             children: [
-              Expanded(child: _buildTableField(hint: 'HSN', onChanged: (v) => item.hsn = v)),
-              SizedBox(width: 8.w),
               Expanded(
-                child: _buildTableField(initialValue: '1', onChanged: (v) {
-                  item.qty = double.tryParse(v) ?? 0;
-                  _calculateTotals();
-                }),
+                child: _buildTableField(
+                  hint: 'HSN',
+                  onChanged: (v) => item.hsn = v,
+                ),
               ),
               SizedBox(width: 8.w),
               Expanded(
-                child: _buildTableField(initialValue: '0.00', onChanged: (v) {
-                  item.rate = double.tryParse(v) ?? 0;
-                  _calculateTotals();
-                }),
+                child: _buildTableField(
+                  initialValue: '1',
+                  onChanged: (v) {
+                    item.qty = double.tryParse(v) ?? 0;
+                    _calculateTotals();
+                  },
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: _buildTableField(
+                  initialValue: '0.00',
+                  onChanged: (v) {
+                    item.rate = double.tryParse(v) ?? 0;
+                    _calculateTotals();
+                  },
+                ),
               ),
             ],
           ),
@@ -384,13 +416,23 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
             children: [
               DropdownButton<double>(
                 value: item.gstRate,
-                items: [0.0, 5.0, 12.0, 18.0, 28.0].map((r) => DropdownMenuItem(value: r, child: Text('${r.toInt()}%'))).toList(),
+                items: [0.0, 5.0, 12.0, 18.0, 28.0]
+                    .map(
+                      (r) => DropdownMenuItem(
+                        value: r,
+                        child: Text('${r.toInt()}%'),
+                      ),
+                    )
+                    .toList(),
                 onChanged: (v) {
                   setState(() => item.gstRate = v!);
                   _calculateTotals();
                 },
               ),
-              Text('Total: ₹ ${(item.qty * item.rate).toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp)),
+              Text(
+                'Total: ₹ ${(item.qty * item.rate).toStringAsFixed(2)}',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp),
+              ),
             ],
           ),
         ],
@@ -591,15 +633,16 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
         color: Colors.white,
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
+      child: Wrap(
+        alignment: WrapAlignment.end,
+        spacing: 16.w,
+        runSpacing: 8.h,
         children: [
           OutlinedButton.icon(
             onPressed: () {},
             icon: const Icon(Icons.attach_file_outlined),
             label: const Text('Attach Bill'),
           ),
-          SizedBox(width: 16.w),
           ElevatedButton.icon(
             onPressed: () {},
             icon: const Icon(Icons.save),
