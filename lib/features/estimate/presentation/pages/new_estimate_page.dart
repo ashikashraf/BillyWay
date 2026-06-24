@@ -57,6 +57,9 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
     _fetchNextEstimateNumber();
 
     _setupFocusListeners();
+    if (_rows.isNotEmpty) {
+      _setupRowFocusListener(_rows[0], 0);
+    }
   }
 
   Future<void> _fetchNextEstimateNumber() async {
@@ -97,6 +100,34 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
     };
   }
 
+  void _promptAddCustomer(String val) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Not a Valid Customer'),
+        content: Text(
+          '"$val" does not exist. Would you like to add it as a new Party?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() => _customerCtrl.clear());
+            },
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showAddCustomerDialog(initialName: val);
+            },
+            child: const Text('Yes, Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _setupRowFocusListener(_ItemRow row, int index) {
     row.focusNode.onKeyEvent = (node, event) {
       if (event is KeyDownEvent) {
@@ -121,6 +152,34 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
       }
       return KeyEventResult.ignored;
     };
+  }
+
+  void _promptAddProduct(String val, int index) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Not a Valid Item'),
+        content: Text(
+          '"$val" does not exist. Would you like to add it as a new Item?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() => _rows[index].particularCtr.clear());
+            },
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showAddProductDialog(index, initialName: val);
+            },
+            child: const Text('Yes, Add'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showUnitSelectionDialog(Function(String) onSelect) async {
@@ -179,8 +238,8 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
   double get _settledAmount => double.tryParse(_settledAmountCtrl.text) ?? 0;
   double get _balance => _total - _settledAmount;
 
-  Future<void> _showAddCustomerDialog() async {
-    final nameCtrl = TextEditingController();
+  Future<void> _showAddCustomerDialog({String? initialName}) async {
+    final nameCtrl = TextEditingController(text: initialName ?? '');
     final obCtrl = TextEditingController(text: '0');
 
     await showDialog(
@@ -211,12 +270,17 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
           ElevatedButton(
             onPressed: () async {
               if (nameCtrl.text.isEmpty) return;
-              
+
               final name = nameCtrl.text.trim();
-              final exists = _customers.any((c) => c.name.toLowerCase() == name.toLowerCase());
+              final exists = _customers.any(
+                (c) => c.name.toLowerCase() == name.toLowerCase(),
+              );
               if (exists) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Party already exists!'), backgroundColor: AppColors.error),
+                  const SnackBar(
+                    content: Text('Party already exists!'),
+                    backgroundColor: AppColors.error,
+                  ),
                 );
                 return;
               }
@@ -255,8 +319,11 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
     );
   }
 
-  Future<void> _showAddProductDialog(int rowIndex) async {
-    final nameCtrl = TextEditingController();
+  Future<void> _showAddProductDialog(
+    int rowIndex, {
+    String? initialName,
+  }) async {
+    final nameCtrl = TextEditingController(text: initialName ?? '');
     final unitCtrl = TextEditingController(text: 'PCS');
     final rateCtrl = TextEditingController(text: '0');
 
@@ -309,12 +376,17 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
           ElevatedButton(
             onPressed: () async {
               if (nameCtrl.text.isEmpty) return;
-              
+
               final name = nameCtrl.text.trim();
-              final exists = _products.any((p) => p.particular.toLowerCase() == name.toLowerCase());
+              final exists = _products.any(
+                (p) => p.particular.toLowerCase() == name.toLowerCase(),
+              );
               if (exists) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Item already exists!'), backgroundColor: AppColors.error),
+                  const SnackBar(
+                    content: Text('Item already exists!'),
+                    backgroundColor: AppColors.error,
+                  ),
                 );
                 return;
               }
@@ -401,7 +473,11 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                             title: Text(c.name),
                             subtitle: Text('OB: ${c.ob.toStringAsFixed(2)}'),
                             trailing: IconButton(
-                              icon: const Icon(Icons.edit, size: 18, color: AppColors.textSecondary),
+                              icon: const Icon(
+                                Icons.edit,
+                                size: 18,
+                                color: AppColors.textSecondary,
+                              ),
                               onPressed: () {
                                 Navigator.pop(context); // close search dialog
                                 _showEditCustomerDialog(c);
@@ -482,7 +558,11 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                               'Rate: ${p.rate.toStringAsFixed(2)} | Unit: ${p.unit}',
                             ),
                             trailing: IconButton(
-                              icon: const Icon(Icons.edit, size: 18, color: AppColors.textSecondary),
+                              icon: const Icon(
+                                Icons.edit,
+                                size: 18,
+                                color: AppColors.textSecondary,
+                              ),
                               onPressed: () {
                                 Navigator.pop(context); // close search dialog
                                 _showEditProductDialog(p);
@@ -490,9 +570,11 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                             ),
                             onTap: () {
                               setState(() {
-                                _rows[rowIndex].particularCtr.text = p.particular;
+                                _rows[rowIndex].particularCtr.text =
+                                    p.particular;
                                 _rows[rowIndex].unitCtr.text = p.unit;
-                                _rows[rowIndex].rateCtr.text = p.rate.toStringAsFixed(2);
+                                _rows[rowIndex].rateCtr.text = p.rate
+                                    .toStringAsFixed(2);
                               });
                               Navigator.pop(context);
                             },
@@ -549,13 +631,18 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
             onPressed: () async {
               if (nameCtrl.text.isEmpty) return;
               final name = nameCtrl.text.trim();
-              
+
               // Check dupes only if name changed
               if (name.toLowerCase() != customer.name.toLowerCase()) {
-                final exists = _customers.any((c) => c.name.toLowerCase() == name.toLowerCase());
+                final exists = _customers.any(
+                  (c) => c.name.toLowerCase() == name.toLowerCase(),
+                );
                 if (exists) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Party already exists!'), backgroundColor: AppColors.error),
+                    const SnackBar(
+                      content: Text('Party already exists!'),
+                      backgroundColor: AppColors.error,
+                    ),
                   );
                   return;
                 }
@@ -569,10 +656,13 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
               Navigator.pop(dialogContext);
 
               try {
-                final saved = await getIt<EstimateController>().updateEstimateCustomer(updatedCustomer);
+                final saved = await getIt<EstimateController>()
+                    .updateEstimateCustomer(updatedCustomer);
                 if (saved != null && mounted) {
                   setState(() {
-                    final index = _customers.indexWhere((c) => c.id == saved.id);
+                    final index = _customers.indexWhere(
+                      (c) => c.id == saved.id,
+                    );
                     if (index != -1) {
                       _customers[index] = saved;
                     }
@@ -585,7 +675,10 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error updating party: $e'), backgroundColor: AppColors.error),
+                    SnackBar(
+                      content: Text('Error updating party: $e'),
+                      backgroundColor: AppColors.error,
+                    ),
                   );
                 }
               }
@@ -619,7 +712,8 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
               builder: (ctx) {
                 final FocusNode unitDialogFocusNode = FocusNode();
                 unitDialogFocusNode.onKeyEvent = (node, event) {
-                  if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.space) {
+                  if (event is KeyDownEvent &&
+                      event.logicalKey == LogicalKeyboardKey.space) {
                     _showUnitSelectionDialog((u) => unitCtrl.text = u);
                     return KeyEventResult.handled;
                   }
@@ -653,10 +747,15 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
               final name = nameCtrl.text.trim();
 
               if (name.toLowerCase() != product.particular.toLowerCase()) {
-                final exists = _products.any((p) => p.particular.toLowerCase() == name.toLowerCase());
+                final exists = _products.any(
+                  (p) => p.particular.toLowerCase() == name.toLowerCase(),
+                );
                 if (exists) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Item already exists!'), backgroundColor: AppColors.error),
+                    const SnackBar(
+                      content: Text('Item already exists!'),
+                      backgroundColor: AppColors.error,
+                    ),
                   );
                   return;
                 }
@@ -671,7 +770,8 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
               Navigator.pop(dialogContext);
 
               try {
-                final saved = await getIt<EstimateController>().updateEstimateProduct(updatedProduct);
+                final saved = await getIt<EstimateController>()
+                    .updateEstimateProduct(updatedProduct);
                 if (saved != null && mounted) {
                   setState(() {
                     final index = _products.indexWhere((p) => p.id == saved.id);
@@ -690,7 +790,10 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error updating item: $e'), backgroundColor: AppColors.error),
+                    SnackBar(
+                      content: Text('Error updating item: $e'),
+                      backgroundColor: AppColors.error,
+                    ),
                   );
                 }
               }
@@ -963,35 +1066,51 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                   controller.text = _customerCtrl.text;
                 }
                 focusNode.onKeyEvent = _customerFocusNode.onKeyEvent;
-                return TextFormField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  decoration: InputDecoration(
-                    hintText: 'Search or type customer...',
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                    suffixIcon: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.list_alt),
-                          onPressed: _showCustomerSearchDialog,
-                          tooltip: 'List/Edit Parties (Ctrl+F2)',
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.add_circle_outline),
-                          onPressed: _showAddCustomerDialog,
-                          tooltip: 'Create Party (Ctrl+F1)',
-                        ),
-                      ],
-                    ),
-                  ),
-                  onChanged: (val) {
-                    _customerCtrl.text = val;
+                return Focus(
+                  onFocusChange: (hasFocus) {
+                    if (!hasFocus && mounted) {
+                      final val = controller.text.trim();
+                      if (val.isNotEmpty) {
+                        final exists = _customers.any(
+                          (c) => c.name.toLowerCase() == val.toLowerCase(),
+                        );
+                        if (!exists) {
+                          _promptAddCustomer(val);
+                        }
+                      }
+                    }
                   },
-                  validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                  child: TextFormField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    decoration: InputDecoration(
+                      hintText: 'Search or type customer...',
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
+                      suffixIcon: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.list_alt),
+                            onPressed: _showCustomerSearchDialog,
+                            tooltip: 'List/Edit Parties (Ctrl+F2)',
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.add_circle_outline),
+                            onPressed: _showAddCustomerDialog,
+                            tooltip: 'Create Party (Ctrl+F1)',
+                          ),
+                        ],
+                      ),
+                    ),
+                    onChanged: (val) {
+                      _customerCtrl.text = val;
+                    },
+                    validator: (v) =>
+                        v == null || v.isEmpty ? 'Required' : null,
+                  ),
                 );
               },
         ),
@@ -1226,41 +1345,62 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                           controller.text = row.particularCtr.text;
                         }
                         focusNode.onKeyEvent = row.focusNode.onKeyEvent;
-                        return TextFormField(
-                          controller: controller,
-                          focusNode: focusNode,
-                          style: TextStyle(fontSize: 14.sp),
-                          decoration: InputDecoration(
-                            hintText: 'Search or type...',
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 8.w,
-                              vertical: 8.h,
-                            ),
-                            suffixIcon: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.list_alt, size: 18),
-                                  onPressed: () => _showProductSearchDialog(i),
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                ),
-                                SizedBox(width: 8.w),
-                                IconButton(
-                                  icon: const Icon(Icons.add_box_outlined, size: 18),
-                                  onPressed: () => _showAddProductDialog(i),
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                ),
-                                SizedBox(width: 4.w),
-                              ],
-                            ),
-                          ),
-                          onChanged: (val) {
-                            row.particularCtr.text = val;
-                            setState(() {});
+                        return Focus(
+                          onFocusChange: (hasFocus) {
+                            if (!hasFocus && mounted) {
+                              final val = controller.text.trim();
+                              if (val.isNotEmpty) {
+                                final exists = _products.any(
+                                  (p) =>
+                                      p.particular.toLowerCase() ==
+                                      val.toLowerCase(),
+                                );
+                                if (!exists) {
+                                  _promptAddProduct(val, i);
+                                }
+                              }
+                            }
                           },
+                          child: TextFormField(
+                            controller: controller,
+                            focusNode: focusNode,
+                            style: TextStyle(fontSize: 14.sp),
+                            decoration: InputDecoration(
+                              hintText: 'Search or type...',
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 8.w,
+                                vertical: 8.h,
+                              ),
+                              suffixIcon: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.list_alt, size: 18),
+                                    onPressed: () =>
+                                        _showProductSearchDialog(i),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                  SizedBox(width: 8.w),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.add_box_outlined,
+                                      size: 18,
+                                    ),
+                                    onPressed: () => _showAddProductDialog(i),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                  SizedBox(width: 4.w),
+                                ],
+                              ),
+                            ),
+                            onChanged: (val) {
+                              row.particularCtr.text = val;
+                              setState(() {});
+                            },
+                          ),
                         );
                       },
                 ),
@@ -1420,40 +1560,60 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
 
                     focusNode.onKeyEvent = row.focusNode.onKeyEvent;
 
-                    return TextFormField(
-                      controller: controller,
-                      focusNode: focusNode,
-                      decoration: InputDecoration(
-                        hintText: 'Particulars',
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 8.w,
-                          vertical: 8.h,
-                        ),
-                        suffixIcon: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.list_alt, size: 20),
-                              onPressed: () => _showProductSearchDialog(i),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
-                            SizedBox(width: 8.w),
-                            IconButton(
-                              icon: const Icon(Icons.add_box_outlined, size: 20),
-                              onPressed: () => _showAddProductDialog(i),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
-                            SizedBox(width: 4.w),
-                          ],
-                        ),
-                      ),
-                      style: TextStyle(fontSize: 13.sp),
-                      onChanged: (val) {
-                        row.particularCtr.text = val;
+                    return Focus(
+                      onFocusChange: (hasFocus) {
+                        if (!hasFocus && mounted) {
+                          final val = controller.text.trim();
+                          if (val.isNotEmpty) {
+                            final exists = _products.any(
+                              (p) =>
+                                  p.particular.toLowerCase() ==
+                                  val.toLowerCase(),
+                            );
+                            if (!exists) {
+                              _promptAddProduct(val, i);
+                            }
+                          }
+                        }
                       },
+                      child: TextFormField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        decoration: InputDecoration(
+                          hintText: 'Particulars',
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 8.w,
+                            vertical: 8.h,
+                          ),
+                          suffixIcon: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.list_alt, size: 20),
+                                onPressed: () => _showProductSearchDialog(i),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              ),
+                              SizedBox(width: 8.w),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.add_box_outlined,
+                                  size: 20,
+                                ),
+                                onPressed: () => _showAddProductDialog(i),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              ),
+                              SizedBox(width: 4.w),
+                            ],
+                          ),
+                        ),
+                        style: TextStyle(fontSize: 13.sp),
+                        onChanged: (val) {
+                          row.particularCtr.text = val;
+                        },
+                      ),
                     );
                   },
             ),
