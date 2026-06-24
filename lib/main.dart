@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:billy_way/core/theme/app_theme.dart';
+import 'package:billy_way/core/theme/theme_controller.dart';
 import 'package:go_router/go_router.dart';
 import 'package:billy_way/shared/widgets/main_layout.dart';
 import 'package:billy_way/features/sales/presentation/pages/sales_page.dart';
@@ -21,6 +22,7 @@ import 'package:billy_way/features/estimate/presentation/pages/estimate_page.dar
 import 'package:billy_way/features/estimate/presentation/pages/new_estimate_page.dart';
 import 'package:billy_way/features/estimate/presentation/pages/estimate_pdf_preview_page.dart';
 import 'package:billy_way/features/estimate/domain/controllers/estimate_controller.dart';
+import 'package:billy_way/features/settings/presentation/pages/settings_page.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:get_it/get_it.dart';
@@ -46,6 +48,9 @@ void setupDependencies() {
   );
   getIt.registerLazySingleton<EstimateController>(
     () => EstimateController(Supabase.instance.client),
+  );
+  getIt.registerLazySingleton<ThemeController>(
+    () => ThemeController(),
   );
 }
 
@@ -86,13 +91,18 @@ class BillyWayApp extends StatelessWidget {
           minTextAdapt: true,
           splitScreenMode: true,
           builder: (context, child) {
-            return MaterialApp.router(
-              title: 'BillyWay ERP',
-              debugShowCheckedModeBanner: false,
-              theme: AppTheme.lightTheme,
-              darkTheme: AppTheme.darkTheme,
-              themeMode: ThemeMode.system,
-              routerConfig: _router,
+            return ValueListenableBuilder<ThemeMode>(
+              valueListenable: getIt<ThemeController>().themeModeNotifier,
+              builder: (context, currentThemeMode, child) {
+                return MaterialApp.router(
+                  title: 'BillyWay ERP',
+                  debugShowCheckedModeBanner: false,
+                  theme: AppTheme.lightTheme,
+                  darkTheme: AppTheme.darkTheme,
+                  themeMode: currentThemeMode,
+                  routerConfig: _router,
+                );
+              },
             );
           },
         );
@@ -196,7 +206,7 @@ final GoRouter _router = GoRouter(
         ),
         GoRoute(
           path: '/settings',
-          builder: (context, state) => const PlaceholderPage(title: 'Settings'),
+          builder: (context, state) => const SettingsPage(),
         ),
         GoRoute(
           path: '/users',

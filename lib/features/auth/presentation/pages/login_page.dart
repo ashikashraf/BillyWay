@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../main.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../../../features/masters/domain/controllers/master_data_controller.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 
 class LoginPage extends StatefulWidget {
@@ -22,6 +23,25 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials();
+  }
+
+  Future<void> _loadSavedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedDb = prefs.getString('saved_database');
+    final savedUser = prefs.getString('saved_username');
+    
+    if (savedDb != null && savedDb.isNotEmpty) {
+      _databaseController.text = savedDb;
+    }
+    if (savedUser != null && savedUser.isNotEmpty) {
+      _usernameController.text = savedUser;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -300,6 +320,11 @@ class _LoginPageState extends State<LoginPage> {
         );
 
         if (mounted && response.session != null) {
+          // Save credentials for next time
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('saved_database', db);
+          await prefs.setString('saved_username', username);
+
           // Fetch role through get_it instance to update global notifier
           await getIt<AuthRepository>().getUserRole();
           

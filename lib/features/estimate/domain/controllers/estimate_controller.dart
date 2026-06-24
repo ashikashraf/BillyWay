@@ -108,6 +108,22 @@ class EstimateController {
     }
   }
 
+  Future<EstimateCustomer?> updateEstimateCustomer(EstimateCustomer customer) async {
+    try {
+      if (customer.id == null) return null;
+      final response = await _supabaseClient
+          .from('estimate_customers')
+          .update(customer.toJson())
+          .eq('id', customer.id!)
+          .select()
+          .single();
+      return EstimateCustomer.fromJson(response);
+    } catch (e) {
+      debugPrint('Error updating estimate customer: $e');
+      rethrow;
+    }
+  }
+
   Future<List<EstimateCustomer>> getEstimateCustomers() async {
     try {
       final response = await _supabaseClient
@@ -131,6 +147,22 @@ class EstimateController {
       return EstimateProduct.fromJson(response);
     } catch (e) {
       debugPrint('Error creating estimate product: $e');
+      rethrow;
+    }
+  }
+
+  Future<EstimateProduct?> updateEstimateProduct(EstimateProduct product) async {
+    try {
+      if (product.id == null) return null;
+      final response = await _supabaseClient
+          .from('estimate_products')
+          .update(product.toJson())
+          .eq('id', product.id!)
+          .select()
+          .single();
+      return EstimateProduct.fromJson(response);
+    } catch (e) {
+      debugPrint('Error updating estimate product: $e');
       rethrow;
     }
   }

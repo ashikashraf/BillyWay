@@ -19,6 +19,16 @@ class EstimatePage extends StatefulWidget {
 class _EstimatePageState extends State<EstimatePage> {
   List<Estimate> _estimates = [];
   bool _isLoading = true;
+  DateTime? _selectedDate = DateTime.now();
+
+  List<Estimate> get _filteredEstimates {
+    if (_selectedDate == null) return _estimates;
+    return _estimates.where((e) {
+      return e.date.year == _selectedDate!.year &&
+             e.date.month == _selectedDate!.month &&
+             e.date.day == _selectedDate!.day;
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -95,6 +105,38 @@ class _EstimatePageState extends State<EstimatePage> {
           spacing: 8.w,
           runSpacing: 8.h,
           children: [
+            if (_selectedDate != null)
+              IconButton(
+                tooltip: 'Clear Date Filter',
+                icon: Icon(Icons.clear, color: AppColors.error),
+                onPressed: () {
+                  setState(() => _selectedDate = null);
+                },
+              ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                final d = await showDatePicker(
+                  context: context,
+                  initialDate: _selectedDate ?? DateTime.now(),
+                  firstDate: DateTime(2000),
+                  lastDate: DateTime(2100),
+                );
+                if (d != null) {
+                  setState(() => _selectedDate = d);
+                }
+              },
+              icon: const Icon(Icons.calendar_today_outlined, size: 18),
+              label: Text(_selectedDate == null 
+                  ? 'Filter by Date' 
+                  : DateFormat('dd MMM yyyy').format(_selectedDate!)),
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+                backgroundColor: AppColors.surface,
+                foregroundColor: AppColors.textPrimary,
+                elevation: 0,
+                side: const BorderSide(color: AppColors.border),
+              ),
+            ),
             IconButton(
               tooltip: 'Refresh',
               icon: Icon(Icons.refresh, color: AppColors.textSecondary),
@@ -121,8 +163,9 @@ class _EstimatePageState extends State<EstimatePage> {
   }
 
   Widget _buildStatsRow() {
-    final total = _estimates.length;
-    final totalValue = _estimates.fold<double>(0, (sum, e) => sum + e.subtotal);
+    final filtered = _filteredEstimates;
+    final total = filtered.length;
+    final totalValue = filtered.fold<double>(0, (sum, e) => sum + e.subtotal);
 
     bool isMobile = MediaQuery.of(context).size.width < 600;
 
@@ -210,7 +253,9 @@ class _EstimatePageState extends State<EstimatePage> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_estimates.isEmpty) {
+    final filtered = _filteredEstimates;
+
+    if (filtered.isEmpty) {
       return Card(
         child: Center(
           child: Column(
@@ -253,13 +298,13 @@ class _EstimatePageState extends State<EstimatePage> {
           DataColumn2(label: Text('Total Amount'), numeric: true),
           DataColumn2(label: Text('Actions'), size: ColumnSize.S),
         ],
-        rows: _estimates.map((e) {
+        rows: filtered.map((e) {
           return DataRow(
             cells: [
               DataCell(Text(e.estimateNumber,
                   style: TextStyle(fontWeight: FontWeight.w600))),
               DataCell(Text(
-                  DateFormat('dd MMM yyyy').format(e.date))),
+                  DateFormat('dd MMM yyyy, hh:mm a').format(e.date))),
               DataCell(Text(e.customerName)),
               DataCell(Text(
                   '₹ ${e.subtotal.toStringAsFixed(2)}',

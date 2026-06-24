@@ -62,17 +62,22 @@ class _MainLayoutState extends State<MainLayout> {
   @override
   Widget build(BuildContext context) {
     bool isSmallScreen = MediaQuery.of(context).size.width < 900;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     if (isSmallScreen) {
       return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(
-          backgroundColor: AppColors.surface,
+          backgroundColor: theme.appBarTheme.backgroundColor,
           elevation: 1,
-          iconTheme: const IconThemeData(color: AppColors.textPrimary),
-          title: const Text(
+          iconTheme: IconThemeData(
+            color: isDark ? AppColors.darkTextPrimary : AppColors.textPrimary,
+          ),
+          title: Text(
             'BillyWay ERP',
             style: TextStyle(
-              color: AppColors.textPrimary,
+              color: isDark ? AppColors.darkTextPrimary : AppColors.textPrimary,
               fontWeight: FontWeight.bold,
               fontSize: 20,
             ),
@@ -88,13 +93,14 @@ class _MainLayoutState extends State<MainLayout> {
           ),
         ),
         body: Container(
-          color: AppColors.background,
+          color: theme.scaffoldBackgroundColor,
           child: widget.child,
         ),
       );
     }
 
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: Row(
         children: [
           SideNav(
@@ -103,7 +109,7 @@ class _MainLayoutState extends State<MainLayout> {
           ),
           Expanded(
             child: Container(
-              color: AppColors.background,
+              color: theme.scaffoldBackgroundColor,
               child: widget.child,
             ),
           ),

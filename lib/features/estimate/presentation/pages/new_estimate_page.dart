@@ -211,8 +211,18 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
           ElevatedButton(
             onPressed: () async {
               if (nameCtrl.text.isEmpty) return;
+              
+              final name = nameCtrl.text.trim();
+              final exists = _customers.any((c) => c.name.toLowerCase() == name.toLowerCase());
+              if (exists) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Party already exists!'), backgroundColor: AppColors.error),
+                );
+                return;
+              }
+
               final newCustomer = EstimateCustomer(
-                name: nameCtrl.text,
+                name: name,
                 ob: double.tryParse(obCtrl.text) ?? 0,
               );
               Navigator.pop(dialogContext);
@@ -299,8 +309,18 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
           ElevatedButton(
             onPressed: () async {
               if (nameCtrl.text.isEmpty) return;
+              
+              final name = nameCtrl.text.trim();
+              final exists = _products.any((p) => p.particular.toLowerCase() == name.toLowerCase());
+              if (exists) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Item already exists!'), backgroundColor: AppColors.error),
+                );
+                return;
+              }
+
               final newProduct = EstimateProduct(
-                particular: nameCtrl.text,
+                particular: name,
                 unit: unitCtrl.text,
                 rate: double.tryParse(rateCtrl.text) ?? 0,
               );
@@ -380,6 +400,13 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                           return ListTile(
                             title: Text(c.name),
                             subtitle: Text('OB: ${c.ob.toStringAsFixed(2)}'),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.edit, size: 18, color: AppColors.textSecondary),
+                              onPressed: () {
+                                Navigator.pop(context); // close search dialog
+                                _showEditCustomerDialog(c);
+                              },
+                            ),
                             onTap: () {
                               setState(() {
                                 _customerCtrl.text = c.name;
@@ -454,13 +481,18 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                             subtitle: Text(
                               'Rate: ${p.rate.toStringAsFixed(2)} | Unit: ${p.unit}',
                             ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.edit, size: 18, color: AppColors.textSecondary),
+                              onPressed: () {
+                                Navigator.pop(context); // close search dialog
+                                _showEditProductDialog(p);
+                              },
+                            ),
                             onTap: () {
                               setState(() {
-                                _rows[rowIndex].particularCtr.text =
-                                    p.particular;
+                                _rows[rowIndex].particularCtr.text = p.particular;
                                 _rows[rowIndex].unitCtr.text = p.unit;
-                                _rows[rowIndex].rateCtr.text = p.rate
-                                    .toStringAsFixed(2);
+                                _rows[rowIndex].rateCtr.text = p.rate.toStringAsFixed(2);
                               });
                               Navigator.pop(context);
                             },
@@ -481,6 +513,192 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
           ],
         );
       },
+    );
+  }
+
+  Future<void> _showEditCustomerDialog(EstimateCustomer customer) async {
+    final nameCtrl = TextEditingController(text: customer.name);
+    final obCtrl = TextEditingController(text: customer.ob.toString());
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Edit Party'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(labelText: 'Party Name'),
+              autofocus: true,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: obCtrl,
+              decoration: const InputDecoration(labelText: 'Old Balance (OB)'),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (nameCtrl.text.isEmpty) return;
+              final name = nameCtrl.text.trim();
+              
+              // Check dupes only if name changed
+              if (name.toLowerCase() != customer.name.toLowerCase()) {
+                final exists = _customers.any((c) => c.name.toLowerCase() == name.toLowerCase());
+                if (exists) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Party already exists!'), backgroundColor: AppColors.error),
+                  );
+                  return;
+                }
+              }
+
+              final updatedCustomer = EstimateCustomer(
+                id: customer.id,
+                name: name,
+                ob: double.tryParse(obCtrl.text) ?? 0,
+              );
+              Navigator.pop(dialogContext);
+
+              try {
+                final saved = await getIt<EstimateController>().updateEstimateCustomer(updatedCustomer);
+                if (saved != null && mounted) {
+                  setState(() {
+                    final index = _customers.indexWhere((c) => c.id == saved.id);
+                    if (index != -1) {
+                      _customers[index] = saved;
+                    }
+                    if (_customerCtrl.text == customer.name) {
+                      _customerCtrl.text = saved.name;
+                      _oldBalanceCtrl.text = saved.ob.toStringAsFixed(2);
+                    }
+                  });
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error updating party: $e'), backgroundColor: AppColors.error),
+                  );
+                }
+              }
+            },
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showEditProductDialog(EstimateProduct product) async {
+    final nameCtrl = TextEditingController(text: product.particular);
+    final unitCtrl = TextEditingController(text: product.unit);
+    final rateCtrl = TextEditingController(text: product.rate.toString());
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Edit Item'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(labelText: 'Particulars'),
+              autofocus: true,
+            ),
+            const SizedBox(height: 16),
+            Builder(
+              builder: (ctx) {
+                final FocusNode unitDialogFocusNode = FocusNode();
+                unitDialogFocusNode.onKeyEvent = (node, event) {
+                  if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.space) {
+                    _showUnitSelectionDialog((u) => unitCtrl.text = u);
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                };
+                return TextFormField(
+                  controller: unitCtrl,
+                  focusNode: unitDialogFocusNode,
+                  decoration: const InputDecoration(
+                    labelText: 'Unit (Press Spacebar to select)',
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: rateCtrl,
+              decoration: const InputDecoration(labelText: 'Rate'),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (nameCtrl.text.isEmpty) return;
+              final name = nameCtrl.text.trim();
+
+              if (name.toLowerCase() != product.particular.toLowerCase()) {
+                final exists = _products.any((p) => p.particular.toLowerCase() == name.toLowerCase());
+                if (exists) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Item already exists!'), backgroundColor: AppColors.error),
+                  );
+                  return;
+                }
+              }
+
+              final updatedProduct = EstimateProduct(
+                id: product.id,
+                particular: name,
+                unit: unitCtrl.text,
+                rate: double.tryParse(rateCtrl.text) ?? 0,
+              );
+              Navigator.pop(dialogContext);
+
+              try {
+                final saved = await getIt<EstimateController>().updateEstimateProduct(updatedProduct);
+                if (saved != null && mounted) {
+                  setState(() {
+                    final index = _products.indexWhere((p) => p.id == saved.id);
+                    if (index != -1) {
+                      _products[index] = saved;
+                    }
+                    for (var row in _rows) {
+                      if (row.particularCtr.text == product.particular) {
+                        row.particularCtr.text = saved.particular;
+                        row.unitCtr.text = saved.unit;
+                        row.rateCtr.text = saved.rate.toStringAsFixed(2);
+                      }
+                    }
+                  });
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error updating item: $e'), backgroundColor: AppColors.error),
+                  );
+                }
+              }
+            },
+            child: const Text('Update'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -710,20 +928,14 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
               ),
             ),
             Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 6,
-                vertical: 2,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: AppColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
                 'Press Ctrl+F1 to Create | Ctrl+F2 to List',
-                style: TextStyle(
-                  fontSize: 10.sp,
-                  color: AppColors.primary,
-                ),
+                style: TextStyle(fontSize: 10.sp, color: AppColors.primary),
               ),
             ),
           ],
@@ -745,37 +957,43 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
               _oldBalanceCtrl.text = selection.ob.toStringAsFixed(2);
             });
           },
-          fieldViewBuilder: (
-            context,
-            controller,
-            focusNode,
-            onEditingComplete,
-          ) {
-            if (controller.text != _customerCtrl.text) {
-              controller.text = _customerCtrl.text;
-            }
-            focusNode.onKeyEvent = _customerFocusNode.onKeyEvent;
-            return TextFormField(
-              controller: controller,
-              focusNode: focusNode,
-              decoration: InputDecoration(
-                hintText: 'Search or type customer...',
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
-                ),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  onPressed: _showAddCustomerDialog,
-                  tooltip: 'Create Party (Ctrl+F1)',
-                ),
-              ),
-              onChanged: (val) {
-                _customerCtrl.text = val;
+          fieldViewBuilder:
+              (context, controller, focusNode, onEditingComplete) {
+                if (controller.text != _customerCtrl.text) {
+                  controller.text = _customerCtrl.text;
+                }
+                focusNode.onKeyEvent = _customerFocusNode.onKeyEvent;
+                return TextFormField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  decoration: InputDecoration(
+                    hintText: 'Search or type customer...',
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.list_alt),
+                          onPressed: _showCustomerSearchDialog,
+                          tooltip: 'List/Edit Parties (Ctrl+F2)',
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle_outline),
+                          onPressed: _showAddCustomerDialog,
+                          tooltip: 'Create Party (Ctrl+F1)',
+                        ),
+                      ],
+                    ),
+                  ),
+                  onChanged: (val) {
+                    _customerCtrl.text = val;
+                  },
+                  validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                );
               },
-              validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-            );
-          },
         ),
       ],
     );
@@ -804,10 +1022,7 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
           },
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 12,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
               border: Border.all(color: AppColors.border),
               borderRadius: BorderRadius.circular(8),
@@ -935,10 +1150,14 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                   scrollDirection: Axis.horizontal,
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
-                      minWidth: constraints.maxWidth < 800 ? 800 : constraints.maxWidth,
+                      minWidth: constraints.maxWidth < 800
+                          ? 800
+                          : constraints.maxWidth,
                     ),
                     child: SizedBox(
-                      width: constraints.maxWidth < 800 ? 800 : constraints.maxWidth,
+                      width: constraints.maxWidth < 800
+                          ? 800
+                          : constraints.maxWidth,
                       child: Column(
                         children: [
                           _buildTableHeader(),
@@ -1003,33 +1222,56 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                   },
                   fieldViewBuilder:
                       (context, controller, focusNode, onEditingComplete) {
-                    if (controller.text != row.particularCtr.text) {
-                      controller.text = row.particularCtr.text;
-                    }
-                    focusNode.onKeyEvent = row.focusNode.onKeyEvent;
-                    return TextFormField(
-                      controller: controller,
-                      focusNode: focusNode,
-                      style: TextStyle(fontSize: 14.sp),
-                      decoration: InputDecoration(
-                        hintText: 'Search or type...',
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 8.w,
-                          vertical: 8.h,
-                        ),
-                      ),
-                      onChanged: (val) {
-                        row.particularCtr.text = val;
-                        setState(() {});
+                        if (controller.text != row.particularCtr.text) {
+                          controller.text = row.particularCtr.text;
+                        }
+                        focusNode.onKeyEvent = row.focusNode.onKeyEvent;
+                        return TextFormField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          style: TextStyle(fontSize: 14.sp),
+                          decoration: InputDecoration(
+                            hintText: 'Search or type...',
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 8.w,
+                              vertical: 8.h,
+                            ),
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.list_alt, size: 18),
+                                  onPressed: () => _showProductSearchDialog(i),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
+                                SizedBox(width: 8.w),
+                                IconButton(
+                                  icon: const Icon(Icons.add_box_outlined, size: 18),
+                                  onPressed: () => _showAddProductDialog(i),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
+                                SizedBox(width: 4.w),
+                              ],
+                            ),
+                          ),
+                          onChanged: (val) {
+                            row.particularCtr.text = val;
+                            setState(() {});
+                          },
+                        );
                       },
-                    );
-                  },
                 ),
               ),
               IconButton(
                 padding: EdgeInsets.zero,
-                icon: Icon(Icons.delete_outline, color: AppColors.error, size: 20.sp),
+                icon: Icon(
+                  Icons.delete_outline,
+                  color: AppColors.error,
+                  size: 20.sp,
+                ),
                 onPressed: _rows.length == 1
                     ? null
                     : () => setState(() {
@@ -1188,11 +1430,24 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                           horizontal: 8.w,
                           vertical: 8.h,
                         ),
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.add_box_outlined, size: 20),
-                          onPressed: () => _showAddProductDialog(i),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.list_alt, size: 20),
+                              onPressed: () => _showProductSearchDialog(i),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                            SizedBox(width: 8.w),
+                            IconButton(
+                              icon: const Icon(Icons.add_box_outlined, size: 20),
+                              onPressed: () => _showAddProductDialog(i),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                            SizedBox(width: 4.w),
+                          ],
                         ),
                       ),
                       style: TextStyle(fontSize: 13.sp),

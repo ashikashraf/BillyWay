@@ -16,19 +16,24 @@ class SideNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Container(
       width: 260.w,
       height: double.infinity,
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: theme.cardTheme.color ?? (isDark ? AppColors.darkSurface : AppColors.surface),
         border: Border(
-          right: BorderSide(color: AppColors.border, width: 1.w),
+          right: BorderSide(
+            color: isDark ? AppColors.darkBorder : AppColors.border,
+            width: 1.w,
+          ),
         ),
       ),
       child: Column(
         children: [
-          _buildLogo(),
+          _buildLogo(context),
           Expanded(
             child: ListView(
               padding: EdgeInsets.symmetric(vertical: 20.h, horizontal: 16.w),
@@ -161,7 +166,8 @@ class SideNav extends StatelessWidget {
     );
   }
 
-  Widget _buildLogo() {
+  Widget _buildLogo(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: EdgeInsets.all(24.w),
       alignment: Alignment.centerLeft,
@@ -195,7 +201,7 @@ class SideNav extends StatelessWidget {
             style: TextStyle(
               fontSize: 20.sp,
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: isDark ? AppColors.darkTextPrimary : AppColors.textPrimary,
               letterSpacing: -0.5,
             ),
           ),
@@ -205,10 +211,11 @@ class SideNav extends StatelessWidget {
   }
 
   Widget _buildUserSection(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: AppColors.border)),
+        border: Border(top: BorderSide(color: isDark ? AppColors.darkBorder : AppColors.border)),
       ),
       child: Row(
         children: [
@@ -227,14 +234,14 @@ class SideNav extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 14.sp,
-                    color: AppColors.textPrimary,
+                    color: isDark ? AppColors.darkTextPrimary : AppColors.textPrimary,
                   ),
                 ),
                 Text(
                   'Main Branch',
                   style: TextStyle(
                     fontSize: 12.sp,
-                    color: AppColors.textSecondary,
+                    color: isDark ? AppColors.darkTextSecondary : AppColors.textSecondary,
                   ),
                 ),
               ],
@@ -267,6 +274,7 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: EdgeInsets.only(bottom: 4.h),
       child: Material(
@@ -288,7 +296,7 @@ class _NavItem extends StatelessWidget {
                   isSelected ? selectedIcon : icon,
                   color: isSelected
                       ? AppColors.primary
-                      : AppColors.textSecondary,
+                      : (isDark ? AppColors.darkTextSecondary : AppColors.textSecondary),
                   size: 22.sp,
                 ),
                 SizedBox(width: 12.w),
@@ -297,7 +305,7 @@ class _NavItem extends StatelessWidget {
                   style: TextStyle(
                     color: isSelected
                         ? AppColors.primary
-                        : AppColors.textSecondary,
+                        : (isDark ? AppColors.darkTextSecondary : AppColors.textSecondary),
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                     fontSize: 14.sp,
                   ),
@@ -317,6 +325,7 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: EdgeInsets.only(left: 12.w, bottom: 8.h),
       child: Text(
@@ -324,7 +333,7 @@ class _SectionHeader extends StatelessWidget {
         style: TextStyle(
           fontSize: 11.sp,
           fontWeight: FontWeight.bold,
-          color: AppColors.textTertiary,
+          color: isDark ? AppColors.darkTextSecondary : AppColors.textTertiary,
           letterSpacing: 1.2,
         ),
       ),
