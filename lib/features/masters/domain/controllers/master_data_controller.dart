@@ -36,8 +36,8 @@ class MasterDataController {
     final initialData = <String, List<Map<String, dynamic>>>{};
     final tables = MasterModule.values.map((m) => getTableName(m)).toList();
     
-    // Also include ledgers, products, customers, suppliers if needed
-    // tables.addAll(['ledgers', 'products', 'customers', 'suppliers']);
+    // Also include ledgers and products
+    tables.addAll(['ledgers', 'products']);
     
     // 1. Fetch initial data concurrently
     await Future.wait(tables.map((table) async {

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 import 'package:billy_way/core/theme/app_colors.dart';
-import 'package:billy_way/core/utils/gst_calculator.dart';
 import 'package:billy_way/main.dart';
 import 'package:billy_way/features/sales/data/models/sales_invoice.dart';
 import 'package:billy_way/features/sales/domain/controllers/sales_controller.dart';
+import 'package:billy_way/features/masters/domain/controllers/master_data_controller.dart';
 import 'package:billy_way/features/sales/presentation/widgets/invoice_preview_widget.dart';
 
 class NewInvoicePage extends StatefulWidget {
@@ -15,30 +16,68 @@ class NewInvoicePage extends StatefulWidget {
   State<NewInvoicePage> createState() => _NewInvoicePageState();
 }
 
+class _InvoiceRow {
+  final TextEditingController productCtr = TextEditingController();
+  final TextEditingController hsnCtr = TextEditingController();
+  final TextEditingController qtyCtr = TextEditingController(text: '1');
+  final TextEditingController unitCtr = TextEditingController(text: 'PCS');
+  final TextEditingController rateCtr = TextEditingController(text: '0');
+
+  double gstRate = 18.0;
+
+  // Tax breakdown
+  double taxableValue = 0;
+  double cgstAmount = 0;
+  double sgstAmount = 0;
+  double igstAmount = 0;
+  double cessAmount = 0;
+
+  final FocusNode focusNode = FocusNode();
+
+  void dispose() {
+    productCtr.dispose();
+    hsnCtr.dispose();
+    qtyCtr.dispose();
+    unitCtr.dispose();
+    rateCtr.dispose();
+    focusNode.dispose();
+  }
+}
+
 class _NewInvoicePageState extends State<NewInvoicePage> {
   final _formKey = GlobalKey<FormState>();
-  
-  // Controllers
-  final _invoiceNumberController = TextEditingController(text: 'INV-2425-0042');
+
+  // Master Data
+  late final MasterDataController _masterController;
+  List<Map<String, dynamic>> _customers = [];
+  List<Map<String, dynamic>> _products = [];
+
+  // Default Branch State Code (Kerala = 32). In a real app, fetch from Branch Settings.
+  final String _branchStateCode = '32';
+
+  // Invoice Meta
+  final _invoiceNumberController = TextEditingController(text: 'INV-2425-0001');
   final _poNumberController = TextEditingController();
-  final _dateController = TextEditingController(text: DateFormat('dd MMM yyyy').format(DateTime.now()));
-  final _dueDateController = TextEditingController(text: DateFormat('dd MMM yyyy').format(DateTime.now().add(const Duration(days: 15))));
-  
-  final _customerNameController = TextEditingController();
+  final _dateController = TextEditingController();
+  final _dueDateController = TextEditingController();
+
+  // Customer Info
+  final _customerCtrl = TextEditingController();
   final _mobileController = TextEditingController();
   final _gstinController = TextEditingController();
   final _billingAddressController = TextEditingController();
   final _shippingAddressController = TextEditingController();
-  
+
+  // Payment & Status
   final _paymentMethodController = TextEditingController(text: 'Bank Transfer');
   final _statusController = TextEditingController(text: 'Unpaid');
+  final _invoiceTypeController = TextEditingController(text: 'B2B');
+  final _supplyTypeController = TextEditingController(text: 'INTRA_STATE');
+  bool _reverseCharge = false;
 
-  // Items List
-  final List<InvoiceItem> _items = [
-    InvoiceItem(name: '', hsn: '', qty: 1, rate: 0, gstRate: 18),
-  ];
+  final List<_InvoiceRow> _rows = [_InvoiceRow()];
 
-  // Summary state
+  // Summary
   double _subtotal = 0;
   double _totalTax = 0;
   double _totalAmount = 0;
@@ -51,59 +90,188 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
   @override
   void initState() {
     super.initState();
+    _dateController.text = DateFormat('dd MMM yyyy').format(DateTime.now());
+    _dueDateController.text = DateFormat(
+      'dd MMM yyyy',
+    ).format(DateTime.now().add(const Duration(days: 15)));
+
+    _masterController = getIt<MasterDataController>();
+    _masterController.masterDataNotifier.addListener(_onMasterDataChanged);
+
+    // Ensure master data is synced
+    if (!_masterController.isInitialized) {
+      _masterController.initRealtimeSync();
+    } else {
+      _onMasterDataChanged();
+    }
+
     _calculateTotals();
+  }
+
+  void _onMasterDataChanged() {
+    final data = _masterController.masterDataNotifier.value;
+    if (mounted) {
+      setState(() {
+        _customers = data['ledgers'] ?? [];
+        _products = data['products'] ?? [];
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _masterController.masterDataNotifier.removeListener(_onMasterDataChanged);
+    _invoiceNumberController.dispose();
+    _poNumberController.dispose();
+    _dateController.dispose();
+    _dueDateController.dispose();
+    _customerCtrl.dispose();
+    _mobileController.dispose();
+    _gstinController.dispose();
+    _billingAddressController.dispose();
+    _shippingAddressController.dispose();
+    _paymentMethodController.dispose();
+    _statusController.dispose();
+    _invoiceTypeController.dispose();
+    _supplyTypeController.dispose();
+    for (var r in _rows) {
+      r.dispose();
+    }
+    super.dispose();
+  }
+
+  void _onCustomerSelected(Map<String, dynamic> customer) {
+    setState(() {
+      _customerCtrl.text = customer['name'] ?? '';
+      _mobileController.text = customer['phone'] ?? customer['mobile'] ?? '';
+      _gstinController.text = customer['gstin'] ?? '';
+      _billingAddressController.text = customer['address'] ?? '';
+
+      // Auto-detect supply type based on GSTIN
+      String custStateCode = customer['state_code'] ?? '';
+      if (custStateCode.isEmpty && _gstinController.text.length >= 2) {
+        custStateCode = _gstinController.text.substring(0, 2);
+      }
+
+      if (custStateCode.isEmpty || custStateCode == _branchStateCode) {
+        _supplyTypeController.text = 'INTRA_STATE';
+      } else {
+        _supplyTypeController.text = 'INTER_STATE';
+      }
+
+      // Auto-detect B2B vs B2C
+      if (_gstinController.text.length == 15) {
+        _invoiceTypeController.text = 'B2B';
+      } else {
+        _invoiceTypeController.text = 'B2C';
+      }
+
+      _calculateTotals();
+    });
+  }
+
+  void _onProductSelected(_InvoiceRow row, Map<String, dynamic> product) {
+    setState(() {
+      row.productCtr.text = product['name'] ?? '';
+      row.hsnCtr.text = product['hsn_sac_code'] ?? product['hsn'] ?? '';
+      row.rateCtr.text = (product['sales_price'] ?? product['price'] ?? 0)
+          .toString();
+      row.gstRate =
+          double.tryParse(product['gst_rate']?.toString() ?? '18') ?? 18.0;
+      row.unitCtr.text = product['unit'] ?? 'PCS';
+      _calculateTotals();
+    });
   }
 
   void _calculateTotals() {
     double subtotal = 0;
-    double cgst = 0;
-    double sgst = 0;
-    double igst = 0;
+    double totalCgst = 0;
+    double totalSgst = 0;
+    double totalIgst = 0;
 
-    for (var item in _items) {
-      double lineTaxable = item.qty * item.rate;
-      subtotal += lineTaxable;
+    bool isInterState = _supplyTypeController.text == 'INTER_STATE';
 
-      // Assuming Intra-state for now (CGST+SGST)
-      bool isInterState = false; 
-      var gstBreakdown = GstCalculator.calculate(
-        taxableAmount: lineTaxable,
-        gstRate: item.gstRate,
-        isInterState: isInterState,
-      );
+    for (var row in _rows) {
+      final qty = double.tryParse(row.qtyCtr.text) ?? 0;
+      final rate = double.tryParse(row.rateCtr.text) ?? 0;
 
-      cgst += gstBreakdown['cgst'] ?? 0;
-      sgst += gstBreakdown['sgst'] ?? 0;
-      igst += gstBreakdown['igst'] ?? 0;
+      row.taxableValue = qty * rate;
+      subtotal += row.taxableValue;
+
+      // GST Calculation
+      double taxAmount = row.taxableValue * (row.gstRate / 100);
+
+      if (isInterState) {
+        row.igstAmount = taxAmount;
+        row.cgstAmount = 0;
+        row.sgstAmount = 0;
+      } else {
+        row.igstAmount = 0;
+        row.cgstAmount = taxAmount / 2;
+        row.sgstAmount = taxAmount / 2;
+      }
+
+      totalCgst += row.cgstAmount;
+      totalSgst += row.sgstAmount;
+      totalIgst += row.igstAmount;
     }
 
     setState(() {
       _subtotal = subtotal;
-      _cgst = cgst;
-      _sgst = sgst;
-      _igst = igst;
-      _totalTax = cgst + sgst + igst;
+      _cgst = totalCgst;
+      _sgst = totalSgst;
+      _igst = totalIgst;
+      _totalTax = totalCgst + totalSgst + totalIgst;
       _totalAmount = _subtotal + _totalTax;
     });
   }
 
   Future<void> _saveInvoice({bool showPreview = true}) async {
     if (!_formKey.currentState!.validate()) return;
+    if (_rows.isEmpty || _rows.every((r) => r.productCtr.text.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please add at least one item'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
 
     setState(() => _isSaving = true);
 
     try {
+      final items = _rows.where((r) => r.productCtr.text.isNotEmpty).map((r) {
+        return InvoiceItem(
+          name: r.productCtr.text,
+          hsn: r.hsnCtr.text,
+          qty: double.tryParse(r.qtyCtr.text) ?? 1,
+          unit: r.unitCtr.text,
+          rate: double.tryParse(r.rateCtr.text) ?? 0,
+          gstRate: r.gstRate,
+          taxableValue: r.taxableValue,
+          cgstAmount: r.cgstAmount,
+          sgstAmount: r.sgstAmount,
+          igstAmount: r.igstAmount,
+          cessAmount: r.cessAmount,
+        );
+      }).toList();
+
       final invoice = SalesInvoice(
         invoiceNumber: _invoiceNumberController.text,
-        poNumber: _poNumberController.text.isEmpty ? null : _poNumberController.text,
+        poNumber: _poNumberController.text.isEmpty
+            ? null
+            : _poNumberController.text,
         date: DateFormat('dd MMM yyyy').parse(_dateController.text),
         dueDate: DateFormat('dd MMM yyyy').parse(_dueDateController.text),
-        customerName: _customerNameController.text.isEmpty ? 'Walk-in Customer' : _customerNameController.text,
+        customerName: _customerCtrl.text.isEmpty
+            ? 'Walk-in Customer'
+            : _customerCtrl.text,
         mobileNumber: _mobileController.text,
         gstin: _gstinController.text,
         billingAddress: _billingAddressController.text,
         shippingAddress: _shippingAddressController.text,
-        items: _items,
+        items: items,
         subtotal: _subtotal,
         totalTax: _totalTax,
         cgst: _cgst,
@@ -112,6 +280,9 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
         totalAmount: _totalAmount,
         paymentMethod: _paymentMethodController.text,
         status: _statusController.text,
+        invoiceType: _invoiceTypeController.text,
+        supplyType: _supplyTypeController.text,
+        reverseCharge: _reverseCharge,
       );
 
       final savedInvoice = await getIt<SalesController>().saveInvoice(invoice);
@@ -120,49 +291,30 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
 
       if (mounted && savedInvoice != null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invoice saved successfully!'), backgroundColor: Colors.green),
+          const SnackBar(
+            content: Text('Tax Invoice saved successfully!'),
+            backgroundColor: Colors.green,
+          ),
         );
-        
+
         if (showPreview) {
-          _showPreview(savedInvoice);
+          showDialog(
+            context: context,
+            builder: (context) => InvoicePreviewWidget(invoice: savedInvoice),
+          );
         }
       }
     } catch (e) {
       setState(() => _isSaving = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving invoice: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Error saving invoice: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
-  }
-
-  void _showPreview([SalesInvoice? invoice]) {
-    final invoiceToPreview = invoice ?? SalesInvoice(
-      invoiceNumber: _invoiceNumberController.text,
-      poNumber: _poNumberController.text,
-      date: DateFormat('dd MMM yyyy').parse(_dateController.text),
-      dueDate: DateFormat('dd MMM yyyy').parse(_dueDateController.text),
-      customerName: _customerNameController.text.isEmpty ? 'Walk-in Customer' : _customerNameController.text,
-      mobileNumber: _mobileController.text,
-      gstin: _gstinController.text,
-      billingAddress: _billingAddressController.text,
-      shippingAddress: _shippingAddressController.text,
-      items: _items,
-      subtotal: _subtotal,
-      totalTax: _totalTax,
-      cgst: _cgst,
-      sgst: _sgst,
-      igst: _igst,
-      totalAmount: _totalAmount,
-      paymentMethod: _paymentMethodController.text,
-      status: _statusController.text,
-    );
-
-    showDialog(
-      context: context,
-      builder: (context) => InvoicePreviewWidget(invoice: invoiceToPreview),
-    );
   }
 
   @override
@@ -217,7 +369,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
                               ),
                             ],
                           ),
-                        SizedBox(height: 100.h), // Space for footer
+                        SizedBox(height: 100.h),
                       ],
                     ),
                   ),
@@ -245,13 +397,26 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
         ),
         SizedBox(width: 8.w),
         Expanded(
-          child: Text(
-            isMobile ? 'New Invoice' : 'Create New Sales Invoice',
-            style: TextStyle(
-              fontSize: isMobile ? 20.sp : 24.sp,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Create Tax Invoice',
+                style: TextStyle(
+                  fontSize: isMobile ? 20.sp : 24.sp,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              Text(
+                'GST Compliant Billing',
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
         if (!isMobile) _buildStatusChip(_statusController.text),
@@ -286,31 +451,116 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
           children: [
             _buildSectionTitle(Icons.description_outlined, 'Invoice Details'),
             SizedBox(height: 24.h),
-            if (isMobile) ...[
-              _buildTextField('Invoice Number', controller: _invoiceNumberController),
-              SizedBox(height: 16.h),
-              _buildTextField('PO Number', controller: _poNumberController, hint: 'Optional PO #'),
-              SizedBox(height: 16.h),
-              _buildTextField('Invoice Date', controller: _dateController, suffixIcon: Icons.calendar_today),
-              SizedBox(height: 16.h),
-              _buildTextField('Due Date', controller: _dueDateController, suffixIcon: Icons.calendar_today),
-            ] else ...[
-              Row(
-                children: [
-                  Expanded(child: _buildTextField('Invoice Number', controller: _invoiceNumberController)),
-                  SizedBox(width: 16.w),
-                  Expanded(child: _buildTextField('PO Number', controller: _poNumberController, hint: 'Optional PO #')),
-                ],
-              ),
-              SizedBox(height: 16.h),
-              Row(
-                children: [
-                  Expanded(child: _buildTextField('Invoice Date', controller: _dateController, suffixIcon: Icons.calendar_today)),
-                  SizedBox(width: 16.w),
-                  Expanded(child: _buildTextField('Due Date', controller: _dueDateController, suffixIcon: Icons.calendar_today)),
-                ],
-              ),
-            ],
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTextField(
+                    'Invoice Number',
+                    controller: _invoiceNumberController,
+                  ),
+                ),
+                SizedBox(width: 16.w),
+                Expanded(
+                  child: _buildTextField(
+                    'PO Number',
+                    controller: _poNumberController,
+                    hint: 'Optional PO #',
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16.h),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTextField(
+                    'Invoice Date',
+                    controller: _dateController,
+                    suffixIcon: Icons.calendar_today,
+                  ),
+                ),
+                SizedBox(width: 16.w),
+                Expanded(
+                  child: _buildTextField(
+                    'Due Date',
+                    controller: _dueDateController,
+                    suffixIcon: Icons.calendar_today,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16.h),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _invoiceTypeController.text,
+                    decoration: InputDecoration(
+                      labelText: 'Invoice Type',
+                      labelStyle: TextStyle(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                      ),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16.w,
+                        vertical: 12.h,
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'B2B',
+                        child: Text('B2B (Registered)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'B2C',
+                        child: Text('B2C (Unregistered)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'EXPORT',
+                        child: Text('Export/Zero Rated'),
+                      ),
+                    ],
+                    onChanged: (v) =>
+                        setState(() => _invoiceTypeController.text = v!),
+                  ),
+                ),
+                SizedBox(width: 16.w),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _supplyTypeController.text,
+                    decoration: InputDecoration(
+                      labelText: 'Supply Type',
+                      labelStyle: TextStyle(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                      ),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16.w,
+                        vertical: 12.h,
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'INTRA_STATE',
+                        child: Text('Intra-State (CGST+SGST)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'INTER_STATE',
+                        child: Text('Inter-State (IGST)'),
+                      ),
+                    ],
+                    onChanged: (v) {
+                      setState(() {
+                        _supplyTypeController.text = v!;
+                        _calculateTotals(); // Re-calculate taxes on supply type change
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -324,40 +574,167 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildSectionTitle(Icons.person_outline, 'Customer Details'),
+            _buildSectionTitle(Icons.person_outline, 'Bill To (Customer)'),
             SizedBox(height: 24.h),
-            if (isMobile) ...[
-              _buildTextField('Customer Name', controller: _customerNameController, hint: 'Search or enter name', prefixIcon: Icons.search),
-              SizedBox(height: 16.h),
-              _buildTextField('Mobile Number', controller: _mobileController, prefixText: '+91 '),
-              SizedBox(height: 16.h),
-              _buildTextField('GSTIN', controller: _gstinController, hint: '27AAAAA0000A1Z5'),
-            ] else
-              Row(
-                children: [
-                  Expanded(flex: 2, child: _buildTextField('Customer Name', controller: _customerNameController, hint: 'Search or enter name', prefixIcon: Icons.search)),
-                  SizedBox(width: 16.w),
-                  Expanded(child: _buildTextField('Mobile Number', controller: _mobileController, prefixText: '+91 ')),
-                  SizedBox(width: 16.w),
-                  Expanded(child: _buildTextField('GSTIN', controller: _gstinController, hint: '27AAAAA0000A1Z5')),
-                ],
-              ),
+            Row(
+              children: [
+                Expanded(flex: 2, child: _buildCustomerAutocomplete()),
+                SizedBox(width: 16.w),
+                Expanded(
+                  child: _buildTextField(
+                    'Mobile Number',
+                    controller: _mobileController,
+                    prefixText: '+91 ',
+                  ),
+                ),
+                SizedBox(width: 16.w),
+                Expanded(
+                  child: _buildTextField(
+                    'GSTIN',
+                    controller: _gstinController,
+                    hint: '15-digit GSTIN',
+                  ),
+                ),
+              ],
+            ),
             SizedBox(height: 16.h),
-            if (isMobile) ...[
-              _buildTextField('Billing Address', controller: _billingAddressController, maxLines: 2),
-              SizedBox(height: 16.h),
-              _buildTextField('Shipping Address', controller: _shippingAddressController, maxLines: 2, hint: 'Same as billing'),
-            ] else
-              Row(
-                children: [
-                  Expanded(child: _buildTextField('Billing Address', controller: _billingAddressController, maxLines: 2)),
-                  SizedBox(width: 16.w),
-                  Expanded(child: _buildTextField('Shipping Address', controller: _shippingAddressController, maxLines: 2, hint: 'Same as billing')),
-                ],
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTextField(
+                    'Billing Address',
+                    controller: _billingAddressController,
+                    maxLines: 2,
+                  ),
+                ),
+                SizedBox(width: 16.w),
+                Expanded(
+                  child: _buildTextField(
+                    'Shipping Address',
+                    controller: _shippingAddressController,
+                    maxLines: 2,
+                    hint: 'Same as billing',
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildCustomerAutocomplete() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Customer Name',
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        SizedBox(height: 8.sp),
+        Autocomplete<Map<String, dynamic>>(
+          displayStringForOption: (option) =>
+              option['ledger_name'] ??
+              option['party_name'] ??
+              option['customer_name'] ??
+              option['name'] ??
+              '',
+          optionsBuilder: (textEditingValue) {
+            if (textEditingValue.text.isEmpty) return _customers;
+            return _customers.where((c) {
+              final name =
+                  (c['ledger_name'] ??
+                          c['party_name'] ??
+                          c['customer_name'] ??
+                          c['name'] ??
+                          '')
+                      .toLowerCase();
+              final gstin = (c['gstin'] ?? '').toLowerCase();
+              final query = textEditingValue.text.toLowerCase();
+              return name.contains(query) || gstin.contains(query);
+            });
+          },
+          onSelected: _onCustomerSelected,
+          optionsViewBuilder: (context, onSelected, options) {
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                elevation: 4,
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(8),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: 250, maxWidth: 300.w),
+                  child: ListView.builder(
+                    padding: EdgeInsets.zero,
+                    shrinkWrap: true,
+                    itemCount: options.length,
+                    itemBuilder: (context, index) {
+                      final option = options.elementAt(index);
+                      final partyName =
+                          option['ledger_name'] ??
+                          option['party_name'] ??
+                          option['customer_name'] ??
+                          option['name'] ??
+                          '';
+                      return ListTile(
+                        title: Text(
+                          partyName,
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 14.sp,
+                          ),
+                        ),
+                        subtitle:
+                            option['gstin'] != null &&
+                                option['gstin'].isNotEmpty
+                            ? Text(
+                                option['gstin'],
+                                style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 12.sp,
+                                ),
+                              )
+                            : null,
+                        onTap: () => onSelected(option),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            );
+          },
+          fieldViewBuilder:
+              (context, controller, focusNode, onEditingComplete) {
+                // Keep controller in sync if modified elsewhere
+                if (_customerCtrl.text != controller.text &&
+                    !focusNode.hasFocus) {
+                  controller.text = _customerCtrl.text;
+                }
+                return TextFormField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  onEditingComplete: onEditingComplete,
+                  decoration: InputDecoration(
+                    hintText: 'Search Party...',
+                    prefixIcon: const Icon(Icons.search),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 16.w,
+                      vertical: 12.h,
+                    ),
+                  ),
+                  onChanged: (val) {
+                    _customerCtrl.text = val;
+                  },
+                  validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                );
+              },
+        ),
+      ],
     );
   }
 
@@ -371,101 +748,33 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildSectionTitle(Icons.list_alt_outlined, 'Item Details'),
+                _buildSectionTitle(
+                  Icons.list_alt_outlined,
+                  'Item Details & HSN',
+                ),
                 TextButton.icon(
                   onPressed: () {
                     setState(() {
-                      _items.add(InvoiceItem(name: '', hsn: '', qty: 1, rate: 0, gstRate: 18));
+                      _rows.add(_InvoiceRow());
                     });
                   },
                   icon: const Icon(Icons.add),
-                  label: const Text('Add Item'),
+                  label: const Text('Add Row'),
                 ),
               ],
             ),
             SizedBox(height: 16.h),
-            if (isMobile)
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _items.length,
-                itemBuilder: (context, index) => _buildMobileItemCard(index),
-              )
-            else ...[
-              _buildTableHead(),
-              const Divider(height: 1),
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _items.length,
-                separatorBuilder: (context, index) => const Divider(height: 1),
-                itemBuilder: (context, index) => _buildItemRow(index),
-              ),
-            ],
+            _buildTableHead(),
+            const Divider(height: 1),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _rows.length,
+              separatorBuilder: (context, index) => const Divider(height: 1),
+              itemBuilder: (context, index) => _buildItemRow(index),
+            ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildMobileItemCard(int index) {
-    var item = _items[index];
-    return Container(
-      margin: EdgeInsets.only(bottom: 16.h),
-      padding: EdgeInsets.all(12.w),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(child: _buildTableField(hint: 'Item name', initialValue: item.name, onChanged: (v) => item.name = v)),
-              IconButton(
-                icon: Icon(Icons.delete_outline, color: AppColors.error, size: 20.sp),
-                onPressed: () {
-                  setState(() => _items.removeAt(index));
-                  _calculateTotals();
-                },
-              ),
-            ],
-          ),
-          Row(
-            children: [
-              Expanded(child: _buildTableField(hint: 'HSN', initialValue: item.hsn, onChanged: (v) => item.hsn = v)),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: _buildTableField(initialValue: item.qty.toString(), onChanged: (v) {
-                  item.qty = double.tryParse(v) ?? 0;
-                  _calculateTotals();
-                }),
-              ),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: _buildTableField(initialValue: item.rate.toString(), onChanged: (v) {
-                  item.rate = double.tryParse(v) ?? 0;
-                  _calculateTotals();
-                }),
-              ),
-            ],
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              DropdownButton<double>(
-                value: item.gstRate,
-                items: [0.0, 5.0, 12.0, 18.0, 28.0].map((r) => DropdownMenuItem(value: r, child: Text('${r.toInt()}%'))).toList(),
-                onChanged: (v) {
-                  setState(() => item.gstRate = v!);
-                  _calculateTotals();
-                },
-              ),
-              Text('Total: ₹ ${(item.qty * item.rate).toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp)),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -476,13 +785,16 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
       color: AppColors.divider.withValues(alpha: 0.3),
       child: Row(
         children: [
-          Expanded(flex: 4, child: _buildTableColText('Item Description')),
-          Expanded(flex: 2, child: _buildTableColText('HSN')),
+          Expanded(
+            flex: 3,
+            child: _buildTableColText('Item / Service Description'),
+          ),
+          Expanded(flex: 2, child: _buildTableColText('HSN/SAC')),
           Expanded(child: _buildTableColText('Qty')),
-          Expanded(child: _buildTableColText('Unit')),
+          Expanded(flex: 1, child: _buildTableColText('Unit')),
           Expanded(flex: 2, child: _buildTableColText('Rate')),
-          Expanded(flex: 2, child: _buildTableColText('Tax %')),
-          Expanded(flex: 2, child: _buildTableColText('Total')),
+          Expanded(flex: 2, child: _buildTableColText('GST %')),
+          Expanded(flex: 2, child: _buildTableColText('Taxable Val')),
           SizedBox(width: 40.w),
         ],
       ),
@@ -492,42 +804,61 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
   Widget _buildTableColText(String text) {
     return Text(
       text,
-      style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
+      style: TextStyle(
+        fontSize: 12.sp,
+        fontWeight: FontWeight.bold,
+        color: AppColors.textSecondary,
+      ),
     );
   }
 
   Widget _buildItemRow(int index) {
-    var item = _items[index];
+    var row = _rows[index];
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 8.h, horizontal: 8.w),
       child: Row(
         children: [
-          Expanded(flex: 4, child: _buildTableField(hint: 'Enter item name', initialValue: item.name, onChanged: (v) => item.name = v)),
+          Expanded(flex: 3, child: _buildProductAutocomplete(row)),
           SizedBox(width: 8.w),
-          Expanded(flex: 2, child: _buildTableField(hint: 'HSN', initialValue: item.hsn, onChanged: (v) => item.hsn = v)),
+          Expanded(
+            flex: 2,
+            child: _buildTableField(hint: 'HSN/SAC', controller: row.hsnCtr),
+          ),
           SizedBox(width: 8.w),
-          Expanded(child: _buildTableField(initialValue: item.qty.toString(), onChanged: (v) {
-            item.qty = double.tryParse(v) ?? 0;
-            _calculateTotals();
-          })),
+          Expanded(
+            child: _buildTableField(
+              controller: row.qtyCtr,
+              onChanged: (v) => _calculateTotals(),
+            ),
+          ),
           SizedBox(width: 8.w),
-          Expanded(child: _buildTableField(initialValue: item.unit, onChanged: (v) => item.unit = v)),
+          Expanded(flex: 1, child: _buildTableField(controller: row.unitCtr)),
           SizedBox(width: 8.w),
-          Expanded(flex: 2, child: _buildTableField(initialValue: item.rate.toString(), onChanged: (v) {
-            item.rate = double.tryParse(v) ?? 0;
-            _calculateTotals();
-          })),
+          Expanded(
+            flex: 2,
+            child: _buildTableField(
+              controller: row.rateCtr,
+              onChanged: (v) => _calculateTotals(),
+            ),
+          ),
           SizedBox(width: 8.w),
           Expanded(
             flex: 2,
             child: DropdownButtonHideUnderline(
               child: DropdownButton<double>(
-                value: item.gstRate,
+                value: row.gstRate,
                 isDense: true,
                 style: TextStyle(fontSize: 14.sp, color: AppColors.textPrimary),
-                items: [0.0, 5.0, 12.0, 18.0, 28.0].map((r) => DropdownMenuItem(value: r, child: Text('${r.toInt()}%'))).toList(),
+                items: [0.0, 5.0, 12.0, 18.0, 28.0]
+                    .map(
+                      (r) => DropdownMenuItem(
+                        value: r,
+                        child: Text('${r.toInt()}%'),
+                      ),
+                    )
+                    .toList(),
                 onChanged: (v) {
-                  setState(() => item.gstRate = v!);
+                  setState(() => row.gstRate = v!);
                   _calculateTotals();
                 },
               ),
@@ -537,21 +868,130 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
           Expanded(
             flex: 2,
             child: Text(
-              '₹ ${(item.qty * item.rate).toStringAsFixed(2)}',
+              '₹ ${row.taxableValue.toStringAsFixed(2)}',
               style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
               textAlign: TextAlign.right,
             ),
           ),
           SizedBox(width: 40.w),
           IconButton(
-            icon: Icon(Icons.delete_outline, color: AppColors.error, size: 20.sp),
+            icon: Icon(
+              Icons.delete_outline,
+              color: AppColors.error,
+              size: 20.sp,
+            ),
             onPressed: () {
-              setState(() => _items.removeAt(index));
+              setState(() => _rows.removeAt(index));
               _calculateTotals();
             },
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildProductAutocomplete(_InvoiceRow row) {
+    return Autocomplete<Map<String, dynamic>>(
+      displayStringForOption: (option) =>
+          option['product_name'] ??
+          option['item_name'] ??
+          option['particular'] ??
+          option['name'] ??
+          '',
+      optionsBuilder: (textEditingValue) {
+        if (textEditingValue.text.isEmpty) return _products;
+        return _products.where((p) {
+          final name =
+              (p['product_name'] ??
+                      p['item_name'] ??
+                      p['particular'] ??
+                      p['name'] ??
+                      '')
+                  .toLowerCase();
+          final hsn = (p['hsn_sac_code'] ?? '').toLowerCase();
+          final query = textEditingValue.text.toLowerCase();
+          return name.contains(query) || hsn.contains(query);
+        });
+      },
+      onSelected: (prod) => _onProductSelected(row, prod),
+      optionsViewBuilder: (context, onSelected, options) {
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 4,
+            color: AppColors.background,
+            borderRadius: BorderRadius.circular(8),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: 250, maxWidth: 300.w),
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                itemCount: options.length,
+                itemBuilder: (context, index) {
+                  final option = options.elementAt(index);
+                  final productName =
+                      option['product_name'] ??
+                      option['item_name'] ??
+                      option['particular'] ??
+                      option['name'] ??
+                      '';
+                  return ListTile(
+                    title: Text(
+                      productName,
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 14.sp,
+                      ),
+                    ),
+                    subtitle: option['hsn_sac_code'] != null
+                        ? Text(
+                            'HSN: ${option['hsn_sac_code']}',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12.sp,
+                            ),
+                          )
+                        : null,
+                    trailing: Text(
+                      '₹${option['sales_price'] ?? option['price'] ?? 0}',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    onTap: () => onSelected(option),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+      fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
+        if (row.productCtr.text != controller.text && !focusNode.hasFocus) {
+          controller.text = row.productCtr.text;
+        }
+        return TextFormField(
+          controller: controller,
+          focusNode: focusNode,
+          onEditingComplete: onEditingComplete,
+          style: TextStyle(fontSize: 14.sp),
+          decoration: InputDecoration(
+            hintText: 'Search Item...',
+            isDense: true,
+            filled: false,
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: AppColors.primary),
+            ),
+            contentPadding: EdgeInsets.symmetric(vertical: 8.h),
+          ),
+          onChanged: (val) {
+            row.productCtr.text = val;
+          },
+        );
+      },
     );
   }
 
@@ -564,55 +1004,78 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildSectionTitle(Icons.account_balance_wallet_outlined, 'Summary'),
+                _buildSectionTitle(
+                  Icons.account_balance_wallet_outlined,
+                  'Tax Summary',
+                ),
                 SizedBox(height: 24.h),
-                _buildSummaryRow('Subtotal', _subtotal),
-                _buildSummaryRow('Total Tax', _totalTax),
+                _buildSummaryRow('Taxable Value', _subtotal),
                 const Divider(height: 32),
-                _buildSummaryRow('CGST', _cgst, isSmall: true),
-                _buildSummaryRow('SGST', _sgst, isSmall: true),
-                _buildSummaryRow('IGST', _igst, isSmall: true),
+                if (_supplyTypeController.text == 'INTRA_STATE') ...[
+                  _buildSummaryRow('CGST', _cgst, isSmall: true),
+                  _buildSummaryRow('SGST', _sgst, isSmall: true),
+                ] else ...[
+                  _buildSummaryRow('IGST', _igst, isSmall: true),
+                ],
+                _buildSummaryRow('Total Tax', _totalTax),
                 const Divider(height: 32),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Total Amount', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
+                    Text(
+                      'Grand Total',
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     Text(
                       '₹ ${_totalAmount.toStringAsFixed(2)}',
-                      style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: AppColors.primary),
+                      style: TextStyle(
+                        fontSize: 20.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
                     ),
                   ],
                 ),
-                SizedBox(height: 24.h),
-                _buildTextField('Payment Method', controller: _paymentMethodController, isDropdown: true),
-                SizedBox(height: 16.h),
-                _buildTextField('Status', controller: _statusController, isDropdown: true),
               ],
             ),
           ),
         ),
-        SizedBox(height: 24.h),
-        _buildMiniAnalytics(),
-      ],
-    );
-  }
-
-  Widget _buildMiniAnalytics() {
-    return Card(
-      color: AppColors.primary,
-      child: Padding(
-        padding: EdgeInsets.all(24.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Quick Insights', style: TextStyle(color: Colors.white70, fontSize: 12.sp, fontWeight: FontWeight.bold)),
-            SizedBox(height: 16.h),
-            Text('${_items.length} Items in this invoice', style: TextStyle(color: Colors.white, fontSize: 14.sp)),
-            SizedBox(height: 8.h),
-            Text('GST is ${(_subtotal == 0 ? 0 : (_totalTax/_subtotal) * 100).toStringAsFixed(1)}% of taxable', style: TextStyle(color: Colors.white70, fontSize: 12.sp)),
-          ],
+        SizedBox(height: 16.h),
+        Card(
+          child: Padding(
+            padding: EdgeInsets.all(24.w),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSectionTitle(Icons.settings_outlined, 'Additional Terms'),
+                SizedBox(height: 16.h),
+                Row(
+                  children: [
+                    Checkbox(
+                      value: _reverseCharge,
+                      onChanged: (v) =>
+                          setState(() => _reverseCharge = v ?? false),
+                    ),
+                    Text(
+                      'Reverse Charge (RCM)',
+                      style: TextStyle(fontSize: 12.sp),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 16.h),
+                _buildTextField(
+                  'Payment Terms',
+                  controller: _paymentMethodController,
+                  isDropdown: true,
+                ),
+              ],
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -623,7 +1086,11 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
         color: Colors.white,
         border: Border(top: BorderSide(color: AppColors.border)),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -5)),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
+          ),
         ],
       ),
       child: Wrap(
@@ -631,22 +1098,21 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
         spacing: 16.w,
         runSpacing: 8.h,
         children: [
-          OutlinedButton.icon(
-            onPressed: () => _showPreview(),
-            icon: const Icon(Icons.remove_red_eye_outlined),
-            label: const Text('Preview'),
-            style: OutlinedButton.styleFrom(padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h)),
-          ),
-          OutlinedButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            label: const Text('Download PDF'),
-            style: OutlinedButton.styleFrom(padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h)),
-          ),
           ElevatedButton.icon(
             onPressed: _isSaving ? null : () => _saveInvoice(),
-            icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save),
-            label: Text(_isSaving ? 'Saving...' : 'Save Invoice'),
+            icon: _isSaving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.check_circle),
+            label: Text(
+              _isSaving ? 'Validating & Saving...' : 'Generate Tax Invoice',
+            ),
             style: ElevatedButton.styleFrom(
               padding: EdgeInsets.symmetric(horizontal: 32.w, vertical: 16.h),
               backgroundColor: AppColors.primary,
@@ -665,32 +1131,63 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
       children: [
         Icon(icon, color: AppColors.primary, size: 20.sp),
         SizedBox(width: 8.w),
-        Text(title, style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 16.sp,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildTextField(String label, {String? hint, TextEditingController? controller, IconData? prefixIcon, IconData? suffixIcon, String? prefixText, int maxLines = 1, bool isDropdown = false}) {
+  Widget _buildTextField(
+    String label, {
+    String? hint,
+    TextEditingController? controller,
+    IconData? prefixIcon,
+    IconData? suffixIcon,
+    String? prefixText,
+    int maxLines = 1,
+    bool isDropdown = false,
+    void Function(String)? onChanged,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
+          ),
+        ),
         SizedBox(height: 8.h),
         TextFormField(
           controller: controller,
           maxLines: maxLines,
           readOnly: isDropdown,
+          onChanged: onChanged,
           decoration: InputDecoration(
             hintText: hint,
-            prefixIcon: prefixIcon != null ? Icon(prefixIcon, size: 20.sp) : null,
+            prefixIcon: prefixIcon != null
+                ? Icon(prefixIcon, size: 20.sp)
+                : null,
             prefixText: prefixText,
-            suffixIcon: isDropdown ? const Icon(Icons.keyboard_arrow_down) : (suffixIcon != null ? Icon(suffixIcon, size: 18.sp) : null),
-            contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+            suffixIcon: isDropdown
+                ? const Icon(Icons.keyboard_arrow_down)
+                : (suffixIcon != null ? Icon(suffixIcon, size: 18.sp) : null),
+            contentPadding: EdgeInsets.symmetric(
+              horizontal: 16.w,
+              vertical: 12.h,
+            ),
           ),
           validator: (value) {
-            if (label == 'Invoice Number' && (value == null || value.isEmpty)) {
+            if (label == 'Invoice Number' && (value == null || value.isEmpty))
               return 'Required';
-            }
             return null;
           },
         ),
@@ -698,9 +1195,13 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
     );
   }
 
-  Widget _buildTableField({String? hint, String? initialValue, Function(String)? onChanged}) {
+  Widget _buildTableField({
+    String? hint,
+    TextEditingController? controller,
+    void Function(String)? onChanged,
+  }) {
     return TextFormField(
-      initialValue: initialValue,
+      controller: controller,
       onChanged: onChanged,
       style: TextStyle(fontSize: 14.sp),
       decoration: InputDecoration(
@@ -708,7 +1209,9 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
         filled: false,
         border: InputBorder.none,
         enabledBorder: InputBorder.none,
-        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primary)),
+        focusedBorder: UnderlineInputBorder(
+          borderSide: BorderSide(color: AppColors.primary),
+        ),
         contentPadding: EdgeInsets.symmetric(vertical: 8.h),
       ),
     );
@@ -720,8 +1223,20 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(fontSize: isSmall ? 12.sp : 14.sp, color: AppColors.textSecondary)),
-          Text('₹ ${value.toStringAsFixed(2)}', style: TextStyle(fontSize: isSmall ? 12.sp : 14.sp, fontWeight: isSmall ? FontWeight.w500 : FontWeight.w600)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: isSmall ? 12.sp : 14.sp,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          Text(
+            '₹ ${value.toStringAsFixed(2)}',
+            style: TextStyle(
+              fontSize: isSmall ? 12.sp : 14.sp,
+              fontWeight: isSmall ? FontWeight.w500 : FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );
