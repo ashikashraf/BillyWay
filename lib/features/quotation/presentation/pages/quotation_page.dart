@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:billy_way/core/widgets/app_loading_animation.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:data_table_2/data_table_2.dart';
 import 'package:go_router/go_router.dart';
@@ -168,7 +169,7 @@ class _QuotationPageState extends State<QuotationPage> {
 
   Widget _buildQuotationTable() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: AppLoadingAnimation());
     }
 
     if (_quotations.isEmpty) {

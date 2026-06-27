@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:billy_way/core/widgets/app_loading_animation.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:data_table_2/data_table_2.dart';
 import 'package:go_router/go_router.dart';
@@ -19,20 +20,35 @@ class EstimatePage extends StatefulWidget {
 class _EstimatePageState extends State<EstimatePage> {
   List<Estimate> _estimates = [];
   bool _isLoading = true;
-  DateTime? _selectedDate = DateTime.now();
+  DateTime? _selectedMonth;
+  final List<DateTime> _availableMonths = [];
+  String _statusFilter = 'All'; // 'All', 'pending', 'cleared'
 
   List<Estimate> get _filteredEstimates {
-    if (_selectedDate == null) return _estimates;
     return _estimates.where((e) {
-      return e.date.year == _selectedDate!.year &&
-             e.date.month == _selectedDate!.month &&
-             e.date.day == _selectedDate!.day;
+      bool dateMatch = true;
+      if (_selectedMonth != null) {
+        dateMatch = e.date.year == _selectedMonth!.year &&
+                    e.date.month == _selectedMonth!.month;
+      }
+      
+      bool statusMatch = true;
+      if (_statusFilter != 'All') {
+        statusMatch = e.status.toLowerCase() == _statusFilter.toLowerCase();
+      }
+      
+      return dateMatch && statusMatch;
     }).toList();
   }
 
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    for (int i = 0; i < 12; i++) {
+      _availableMonths.add(DateTime(now.year, now.month - i, 1));
+    }
+    _selectedMonth = _availableMonths.first;
     _loadEstimates();
   }
 
@@ -53,6 +69,72 @@ class _EstimatePageState extends State<EstimatePage> {
     showDialog(
       context: context,
       builder: (_) => EstimatePreviewWidget(estimate: estimate),
+    );
+  }
+
+  void _showMarkAsClearedDialog(Estimate estimate) {
+    final settledCtrl = TextEditingController(text: estimate.total.toStringAsFixed(2));
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Mark as Cleared'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Estimate No: ${estimate.estimateNumber}'),
+            SizedBox(height: 8.h),
+            Text('Customer: ${estimate.customerName}'),
+            SizedBox(height: 8.h),
+            Text('Total Amount: ₹ ${estimate.total.toStringAsFixed(2)}'),
+            SizedBox(height: 16.h),
+            const Text('Settled Amount:'),
+            SizedBox(height: 8.h),
+            TextField(
+              controller: settledCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                prefixText: '₹ ',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final settled = double.tryParse(settledCtrl.text) ?? estimate.total;
+              final balance = estimate.total - settled;
+              Navigator.pop(ctx);
+              
+              setState(() => _isLoading = true);
+              try {
+                await getIt<EstimateController>().updateEstimateStatus(
+                  estimate.id!,
+                  'cleared',
+                  settled,
+                  balance,
+                );
+                _loadEstimates();
+              } catch (e) {
+                if (mounted) {
+                  setState(() => _isLoading = false);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error updating status: $e'), backgroundColor: AppColors.error),
+                  );
+                }
+              }
+            },
+            child: const Text('Mark Cleared'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -105,36 +187,61 @@ class _EstimatePageState extends State<EstimatePage> {
           spacing: 8.w,
           runSpacing: 8.h,
           children: [
-            if (_selectedDate != null)
+            if (_selectedMonth != null || _statusFilter != 'All')
               IconButton(
-                tooltip: 'Clear Date Filter',
+                tooltip: 'Clear Filters',
                 icon: Icon(Icons.clear, color: AppColors.error),
                 onPressed: () {
-                  setState(() => _selectedDate = null);
+                  setState(() {
+                    _selectedMonth = null;
+                    _statusFilter = 'All';
+                  });
                 },
               ),
-            ElevatedButton.icon(
-              onPressed: () async {
-                final d = await showDatePicker(
-                  context: context,
-                  initialDate: _selectedDate ?? DateTime.now(),
-                  firstDate: DateTime(2000),
-                  lastDate: DateTime(2100),
-                );
-                if (d != null) {
-                  setState(() => _selectedDate = d);
-                }
-              },
-              icon: const Icon(Icons.calendar_today_outlined, size: 18),
-              label: Text(_selectedDate == null 
-                  ? 'Filter by Date' 
-                  : DateFormat('dd MMM yyyy').format(_selectedDate!)),
-              style: ElevatedButton.styleFrom(
-                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-                backgroundColor: AppColors.surface,
-                foregroundColor: AppColors.textPrimary,
-                elevation: 0,
-                side: const BorderSide(color: AppColors.border),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.w),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppColors.border),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _statusFilter,
+                  items: const [
+                    DropdownMenuItem(value: 'All', child: Text('All Statuses')),
+                    DropdownMenuItem(value: 'pending', child: Text('Pending')),
+                    DropdownMenuItem(value: 'cleared', child: Text('Cleared')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _statusFilter = val);
+                    }
+                  },
+                ),
+              ),
+            ),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.w),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppColors.border),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<DateTime?>(
+                  value: _selectedMonth,
+                  hint: const Text('Filter by Month'),
+                  icon: const Icon(Icons.calendar_month_outlined, size: 18),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('All Months')),
+                    ..._availableMonths.map((m) => DropdownMenuItem(
+                          value: m,
+                          child: Text(DateFormat('MMMM yyyy').format(m)),
+                        )),
+                  ],
+                  onChanged: (val) {
+                    setState(() => _selectedMonth = val);
+                  },
+                ),
               ),
             ),
             IconButton(
@@ -250,7 +357,7 @@ class _EstimatePageState extends State<EstimatePage> {
 
   Widget _buildEstimateTable() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: AppLoadingAnimation());
     }
 
     final filtered = _filteredEstimates;
@@ -284,7 +391,8 @@ class _EstimatePageState extends State<EstimatePage> {
       child: DataTable2(
         columnSpacing: 12,
         horizontalMargin: 12,
-        minWidth: 850,
+        showCheckboxColumn: false,
+        minWidth: 950,
         headingRowHeight: 56.h,
         dataRowHeight: 64.h,
         headingRowColor: WidgetStateProperty.all(
@@ -295,11 +403,17 @@ class _EstimatePageState extends State<EstimatePage> {
           DataColumn2(label: Text('Customer'), size: ColumnSize.L),
           DataColumn2(label: Text('Subtotal'), numeric: true),
           DataColumn2(label: Text('Old Balance'), numeric: true),
-          DataColumn2(label: Text('Total Amount'), numeric: true),
+          DataColumn2(label: Text('Total'), numeric: true),
+          DataColumn2(label: Text('Settled'), numeric: true),
+          DataColumn2(label: Text('Status'), size: ColumnSize.S),
           DataColumn2(label: Text('Actions'), size: ColumnSize.S),
         ],
         rows: filtered.map((e) {
+          final isPending = e.status == 'pending';
           return DataRow(
+            onSelectChanged: (_) {
+              context.push('/new-estimate', extra: e).then((_) => _loadEstimates());
+            },
             cells: [
               DataCell(Text(e.estimateNumber,
                   style: TextStyle(fontWeight: FontWeight.w600))),
@@ -315,6 +429,30 @@ class _EstimatePageState extends State<EstimatePage> {
               DataCell(Text(
                   '₹ ${e.total.toStringAsFixed(2)}',
                   textAlign: TextAlign.right, style: TextStyle(fontWeight: FontWeight.bold))),
+              DataCell(Text(
+                  '₹ ${e.settledAmount.toStringAsFixed(2)}',
+                  textAlign: TextAlign.right, style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold))),
+              DataCell(
+                InkWell(
+                  onTap: isPending ? () => _showMarkAsClearedDialog(e) : null,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                    decoration: BoxDecoration(
+                      color: isPending ? Colors.orange.withValues(alpha: 0.2) : Colors.green.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      e.status.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.bold,
+                        color: isPending ? Colors.orange[800] : Colors.green[800],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
               DataCell(
                 Wrap(
                   spacing: 4.w,
@@ -326,53 +464,69 @@ class _EstimatePageState extends State<EstimatePage> {
                       onPressed: () => _showPreview(e),
                     ),
                     PopupMenuButton<String>(
-                      tooltip: 'Print',
-                      icon: Icon(Icons.print_outlined, size: 18.sp),
+                      tooltip: 'Actions',
+                      icon: Icon(Icons.more_vert, size: 18.sp),
                       itemBuilder: (context) => [
-                        const PopupMenuItem(value: 'A4', child: Text('Print A4')),
-                        const PopupMenuItem(value: 'A5', child: Text('Print A5')),
-                        const PopupMenuItem(value: 'A6', child: Text('Print A6')),
-                        const PopupMenuItem(value: 'POS', child: Text('Print POS (Thermal)')),
+                        const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                        const PopupMenuItem(value: 'print_a4', child: Text('Print A4')),
+                        const PopupMenuItem(value: 'print_a5', child: Text('Print A5')),
+                        const PopupMenuItem(value: 'print_a6', child: Text('Print A6')),
+                        const PopupMenuItem(value: 'print_pos', child: Text('Print POS')),
+                        const PopupMenuItem(value: 'delete', child: Text('Delete')),
                       ],
-                      onSelected: (format) {
-                        context.push(
-                          '/estimate-preview',
-                          extra: {
-                            'estimate': e,
-                            'formatType': format,
-                          },
-                        );
-                      },
-                    ),
-                    IconButton(
-                      tooltip: 'Delete',
-                      icon: Icon(Icons.delete_outline,
-                          size: 18.sp, color: AppColors.error),
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('Delete Estimate'),
-                            content: Text('Are you sure you want to delete ${e.estimateNumber}?'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx),
-                                child: const Text('Cancel'),
-                              ),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white),
-                                onPressed: () async {
-                                  Navigator.pop(ctx);
-                                  if (e.id != null) {
-                                    await getIt<EstimateController>().deleteEstimate(e.id!);
-                                    _loadEstimates();
-                                  }
-                                },
-                                child: const Text('Delete'),
-                              ),
-                            ],
-                          ),
-                        );
+                      onSelected: (action) {
+                        if (action == 'edit') {
+                          context.push('/new-estimate', extra: e).then((_) => _loadEstimates());
+                        } else if (action == 'delete') {
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Delete Estimate'),
+                              content: Text(
+                                  'Are you sure you want to delete ${e.estimateNumber}?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: const Text('Cancel'),
+                                ),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.error),
+                                  onPressed: () async {
+                                    Navigator.pop(ctx);
+                                    try {
+                                      await getIt<EstimateController>()
+                                          .deleteEstimate(e.id!);
+                                      _loadEstimates();
+                                    } catch (err) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                                'Error deleting estimate: $err'),
+                                            backgroundColor: AppColors.error,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  child: const Text('Delete',
+                                      style: TextStyle(color: Colors.white)),
+                                ),
+                              ],
+                            ),
+                          );
+                        } else if (action.startsWith('print_')) {
+                          final format = action.split('_')[1].toUpperCase();
+                          context.push(
+                            '/estimate-preview',
+                            extra: {
+                              'estimate': e,
+                              'formatType': format,
+                            },
+                          );
+                        }
                       },
                     ),
                   ],

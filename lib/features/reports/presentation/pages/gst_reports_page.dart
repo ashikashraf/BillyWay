@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:billy_way/core/widgets/app_loading_animation.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -58,7 +59,7 @@ class _GstReportsPageState extends State<GstReportsPage> {
         backgroundColor: Colors.white,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: AppLoadingAnimation())
           : SingleChildScrollView(
               padding: EdgeInsets.all(24.w),
               child: Column(

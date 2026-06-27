@@ -9,6 +9,9 @@ class Estimate {
   final double total;
   final double settledAmount;
   final double balance;
+  final String paymentMode;
+  final int creditDays;
+  final String status;
   final DateTime? createdAt;
 
   Estimate({
@@ -22,6 +25,9 @@ class Estimate {
     required this.total,
     required this.settledAmount,
     required this.balance,
+    this.paymentMode = 'cash',
+    this.creditDays = 0,
+    this.status = 'cleared',
     this.createdAt,
   });
 
@@ -35,6 +41,9 @@ class Estimate {
       'total': total,
       'settled_amount': settledAmount,
       'balance': balance,
+      'payment_mode': paymentMode,
+      'credit_days': creditDays,
+      'status': status,
     };
   }
 
@@ -50,6 +59,9 @@ class Estimate {
       total: (json['total'] as num).toDouble(),
       settledAmount: (json['settled_amount'] as num?)?.toDouble() ?? 0.0,
       balance: (json['balance'] as num?)?.toDouble() ?? 0.0,
+      paymentMode: json['payment_mode'] ?? 'cash',
+      creditDays: json['credit_days'] ?? 0,
+      status: json['status'] ?? 'cleared',
       createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : null,
     );
   }

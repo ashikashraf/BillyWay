@@ -1,4 +1,5 @@
 import 'package:billy_way/features/masters/presentation/pages/master_management_page.dart';
+import 'package:billy_way/core/widgets/app_loading_animation.dart';
 import 'package:billy_way/features/masters/presentation/widgets/smart_master_dropdown.dart';
 import 'package:billy_way/features/sales/data/models/sales_invoice.dart';
 import 'package:flutter/material.dart';
@@ -450,7 +451,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
           if (_isSaving)
             Container(
               color: Colors.black26,
-              child: const Center(child: CircularProgressIndicator()),
+              child: const Center(child: AppLoadingAnimation()),
             ),
         ],
       ),

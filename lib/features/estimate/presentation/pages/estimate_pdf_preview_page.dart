@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:billy_way/core/widgets/app_loading_animation.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:go_router/go_router.dart';
@@ -44,7 +45,7 @@ class EstimatePdfPreviewPage extends StatelessWidget {
         pdfFileName: 'Estimate_${estimate.estimateNumber}.pdf',
         previewPageMargin: const EdgeInsets.all(10),
         loadingWidget: const Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
+          child: const AppLoadingAnimation(),
         ),
       ),
     );

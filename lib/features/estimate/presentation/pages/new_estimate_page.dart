@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:billy_way/core/widgets/app_loading_animation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
@@ -9,7 +10,9 @@ import 'package:billy_way/features/estimate/data/models/estimate.dart';
 import 'package:go_router/go_router.dart';
 
 class NewEstimatePage extends StatefulWidget {
-  const NewEstimatePage({super.key});
+  final Estimate? estimate;
+
+  const NewEstimatePage({super.key, this.estimate});
 
   @override
   State<NewEstimatePage> createState() => _NewEstimatePageState();
@@ -46,19 +49,48 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
   final List<_ItemRow> _rows = [_ItemRow()];
   bool _isSaving = false;
 
+  String _paymentMode = 'cash';
+  final _creditDaysCtrl = TextEditingController(text: '0');
+
   List<EstimateCustomer> _customers = [];
   List<EstimateProduct> _products = [];
 
   @override
   void initState() {
     super.initState();
-    _date = DateTime.now();
-    _estimateNoCtrl.text = 'Loading...';
-    _fetchNextEstimateNumber();
+    _date = widget.estimate?.date ?? DateTime.now();
+
+    if (widget.estimate != null) {
+      _estimateNoCtrl.text = widget.estimate!.estimateNumber;
+      _customerCtrl.text = widget.estimate!.customerName;
+      _oldBalanceCtrl.text = widget.estimate!.oldBalance.toStringAsFixed(2);
+      _settledAmountCtrl.text = widget.estimate!.settledAmount.toStringAsFixed(
+        2,
+      );
+      _paymentMode = widget.estimate!.paymentMode;
+      _creditDaysCtrl.text = widget.estimate!.creditDays.toString();
+
+      _rows.clear();
+      for (final item in widget.estimate!.items) {
+        final row = _ItemRow();
+        row.particularCtr.text = item.particular;
+        row.qtyCtr.text = item.qty.toString();
+        row.unitCtr.text = item.unit;
+        row.rateCtr.text = item.rate.toString();
+        _rows.add(row);
+      }
+      if (_rows.isEmpty) _rows.add(_ItemRow());
+      _loadData();
+    } else {
+      _estimateNoCtrl.text = 'Loading...';
+      _fetchNextEstimateNumber();
+    }
 
     _setupFocusListeners();
     if (_rows.isNotEmpty) {
-      _setupRowFocusListener(_rows[0], 0);
+      for (int i = 0; i < _rows.length; i++) {
+        _setupRowFocusListener(_rows[i], i);
+      }
     }
   }
 
@@ -219,6 +251,7 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
     _customerCtrl.dispose();
     _oldBalanceCtrl.dispose();
     _settledAmountCtrl.dispose();
+    _creditDaysCtrl.dispose();
     _customerFocusNode.dispose();
     for (final r in _rows) {
       r.dispose();
@@ -908,7 +941,7 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
       }
 
       final estimate = Estimate(
-        id: '',
+        id: widget.estimate?.id ?? '',
         estimateNumber: _estimateNoCtrl.text,
         date: _date,
         customerName: _customerCtrl.text,
@@ -918,11 +951,17 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
         total: _total,
         settledAmount: _settledAmount,
         balance: _balance,
+        paymentMode: _paymentMode,
+        creditDays: _paymentMode == 'credit'
+            ? (int.tryParse(_creditDaysCtrl.text) ?? 0)
+            : 0,
+        status: _paymentMode == 'credit' ? 'pending' : 'cleared',
       );
 
-      final savedEstimate = await getIt<EstimateController>().saveEstimate(
-        estimate,
-      );
+      final controller = getIt<EstimateController>();
+      final savedEstimate = widget.estimate != null
+          ? await controller.updateEstimate(estimate)
+          : await controller.saveEstimate(estimate);
 
       if (mounted) {
         if (savedEstimate != null) {
@@ -989,9 +1028,11 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
         SizedBox(width: 8.w),
         Expanded(
           child: Text(
-            'New Estimate Bill',
+            widget.estimate != null
+                ? 'Edit Estimate Bill'
+                : 'New Estimate Bill',
             style: TextStyle(
-              fontSize: 22.sp,
+              fontSize: 24.sp,
               fontWeight: FontWeight.bold,
               color: AppColors.textPrimary,
             ),
@@ -1740,6 +1781,50 @@ class _NewEstimatePageState extends State<NewEstimatePage> {
                       ),
                     ],
                   ),
+                  const Divider(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Payment Mode', style: TextStyle(fontSize: 14.sp)),
+                      DropdownButton<String>(
+                        value: _paymentMode,
+                        items: const [
+                          DropdownMenuItem(value: 'cash', child: Text('Cash')),
+                          DropdownMenuItem(
+                            value: 'credit',
+                            child: Text('Credit'),
+                          ),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) setState(() => _paymentMode = val);
+                        },
+                      ),
+                    ],
+                  ),
+                  if (_paymentMode == 'credit') ...[
+                    SizedBox(height: 12.h),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Credit Days', style: TextStyle(fontSize: 14.sp)),
+                        SizedBox(
+                          width: 120.w,
+                          child: TextField(
+                            controller: _creditDaysCtrl,
+                            textAlign: TextAlign.right,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   const Divider(height: 24),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
