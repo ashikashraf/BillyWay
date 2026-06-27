@@ -4,8 +4,39 @@ import 'package:data_table_2/data_table_2.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 
-class SalesPage extends StatelessWidget {
+import 'package:intl/intl.dart';
+import '../../../../main.dart';
+import '../../data/models/sales_invoice.dart';
+import '../../domain/controllers/sales_controller.dart';
+
+class SalesPage extends StatefulWidget {
   const SalesPage({super.key});
+
+  @override
+  State<SalesPage> createState() => _SalesPageState();
+}
+
+class _SalesPageState extends State<SalesPage> {
+  bool _isLoading = true;
+  List<SalesInvoice> _invoices = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInvoices();
+  }
+
+  Future<void> _loadInvoices() async {
+    setState(() => _isLoading = true);
+    final salesController = getIt<SalesController>();
+    final invoices = await salesController.getInvoices();
+    if (mounted) {
+      setState(() {
+        _invoices = invoices;
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -139,6 +170,7 @@ class SalesPage extends StatelessWidget {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: DataTable2(
+        showCheckboxColumn: false,
         columnSpacing: 12,
         horizontalMargin: 12,
         minWidth: 800,
@@ -157,33 +189,59 @@ class SalesPage extends StatelessWidget {
           DataColumn2(label: Text('Status'), size: ColumnSize.S),
           DataColumn2(label: Text('Actions'), size: ColumnSize.S),
         ],
-        rows: List.generate(10, (index) {
-          return DataRow(
-            cells: [
-              DataCell(Text('INV-2024-${1000 + index}')),
-              DataCell(Text('30 Apr 2024')),
-              DataCell(Text('Walk-in Customer $index')),
-              DataCell(Text('₹ 1,000.00')),
-              DataCell(Text('₹ 180.00')),
-              DataCell(Text('₹ 1,180.00')),
-              DataCell(_buildStatusChip('Paid')),
-              DataCell(
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.print, size: 18),
-                      onPressed: () {},
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.more_vert, size: 18),
-                      onPressed: () {},
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-        }),
+        rows: _isLoading
+            ? []
+            : _invoices.isEmpty
+                ? [
+                    const DataRow(cells: [
+                      DataCell(Text('')),
+                      DataCell(Text('')),
+                      DataCell(Text('')),
+                      DataCell(Text('No invoices found')),
+                      DataCell(Text('')),
+                      DataCell(Text('')),
+                      DataCell(Text('')),
+                      DataCell(Text('')),
+                    ])
+                  ]
+                : _invoices.map((invoice) {
+                    return DataRow(
+                      onSelectChanged: (_) {
+                        context.push(
+                          '/sales-invoice-pdf-preview',
+                          extra: {'invoice': invoice, 'formatType': 'A4'},
+                        );
+                      },
+                      cells: [
+                        DataCell(Text(invoice.invoiceNumber)),
+                        DataCell(Text(DateFormat('dd MMM yyyy').format(invoice.date))),
+                        DataCell(Text(invoice.customerName)),
+                        DataCell(Text('₹ ${invoice.subtotal.toStringAsFixed(2)}')),
+                        DataCell(Text('₹ ${invoice.totalTax.toStringAsFixed(2)}')),
+                        DataCell(Text('₹ ${invoice.totalAmount.toStringAsFixed(2)}')),
+                        DataCell(_buildStatusChip(invoice.status)),
+                        DataCell(
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.print, size: 18),
+                                onPressed: () {
+                                  context.push(
+                                    '/sales-invoice-pdf-preview',
+                                    extra: {'invoice': invoice, 'formatType': 'A4'},
+                                  );
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.more_vert, size: 18),
+                                onPressed: () {},
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
       ),
     );
   }

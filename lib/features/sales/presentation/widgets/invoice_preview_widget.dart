@@ -3,6 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 import 'package:billy_way/core/theme/app_colors.dart';
 import 'package:billy_way/features/sales/data/models/sales_invoice.dart';
+import 'package:billy_way/features/sales/presentation/pages/sales_invoice_pdf_preview_page.dart';
 
 class InvoicePreviewWidget extends StatelessWidget {
   final SalesInvoice invoice;
@@ -68,7 +69,16 @@ class InvoicePreviewWidget extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.print, color: Colors.white),
                 onPressed: () {
-                  // Print logic would go here
+                  Navigator.pop(context); // Close dialog
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => SalesInvoicePdfPreviewPage(
+                        invoice: invoice,
+                        formatType: 'A4', // Defaulting to A4 for now
+                      ),
+                    ),
+                  );
                 },
               ),
               IconButton(

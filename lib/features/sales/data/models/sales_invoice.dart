@@ -25,6 +25,7 @@ class SalesInvoice {
   final bool reverseCharge;
   final String? placeOfSupply;
   final DateTime? createdAt;
+  final String? warehouseId;
 
   SalesInvoice({
     this.id,
@@ -53,6 +54,7 @@ class SalesInvoice {
     this.reverseCharge = false,
     this.placeOfSupply,
     this.createdAt,
+    this.warehouseId,
   });
 
   Map<String, dynamic> toJson() {
@@ -80,6 +82,7 @@ class SalesInvoice {
       'qr_code_data': qrCodeData,
       'reverse_charge': reverseCharge,
       'place_of_supply': placeOfSupply,
+      'warehouse_id': warehouseId,
     };
   }
 
@@ -116,6 +119,7 @@ class SalesInvoice {
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : null,
+      warehouseId: json['warehouse_id']?.toString(),
     );
   }
 }

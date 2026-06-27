@@ -1,13 +1,19 @@
+import 'package:billy_way/features/masters/presentation/pages/master_management_page.dart';
+import 'package:billy_way/features/masters/presentation/widgets/smart_master_dropdown.dart';
+import 'package:billy_way/features/sales/data/models/sales_invoice.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 import 'package:billy_way/core/theme/app_colors.dart';
 import 'package:billy_way/main.dart';
-import 'package:billy_way/features/sales/data/models/sales_invoice.dart';
 import 'package:billy_way/features/sales/domain/controllers/sales_controller.dart';
 import 'package:billy_way/features/masters/domain/controllers/master_data_controller.dart';
+import 'package:billy_way/features/settings/domain/controllers/settings_controller.dart';
+import 'package:billy_way/features/stock/domain/controllers/stock_controller.dart';
 import 'package:billy_way/features/sales/presentation/widgets/invoice_preview_widget.dart';
+import 'package:billy_way/core/utils/tax_engine.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class NewInvoicePage extends StatefulWidget {
   const NewInvoicePage({super.key});
@@ -24,6 +30,7 @@ class _InvoiceRow {
   final TextEditingController rateCtr = TextEditingController(text: '0');
 
   double gstRate = 18.0;
+  double? availableStock;
 
   // Tax breakdown
   double taxableValue = 0;
@@ -52,11 +59,13 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
   List<Map<String, dynamic>> _customers = [];
   List<Map<String, dynamic>> _products = [];
 
-  // Default Branch State Code (Kerala = 32). In a real app, fetch from Branch Settings.
-  final String _branchStateCode = '32';
+  // Branch State Code (Dynamically fetched from Settings)
+  late final String _branchStateCode;
 
   // Invoice Meta
-  final _invoiceNumberController = TextEditingController(text: 'INV-2425-0001');
+  final _invoiceNumberController = TextEditingController(
+    text: '(Auto-generated on save)',
+  );
   final _poNumberController = TextEditingController();
   final _dateController = TextEditingController();
   final _dueDateController = TextEditingController();
@@ -86,10 +95,18 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
   double _igst = 0;
 
   bool _isSaving = false;
+  String? _warehouseId;
 
   @override
   void initState() {
     super.initState();
+    final settings = getIt<SettingsController>();
+    _branchStateCode = settings.branchStateCode;
+
+    if (!settings.enableMultiWarehouse) {
+      _warehouseId = settings.defaultWarehouseId;
+    }
+
     _dateController.text = DateFormat('dd MMM yyyy').format(DateTime.now());
     _dueDateController.text = DateFormat(
       'dd MMM yyyy',
@@ -114,6 +131,15 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
       setState(() {
         _customers = data['ledgers'] ?? [];
         _products = data['products'] ?? [];
+
+        final settings = getIt<SettingsController>();
+        if (!settings.enableMultiWarehouse && _warehouseId == null) {
+          final warehouses = data['warehouses'] as List?;
+          if (warehouses != null && warehouses.isNotEmpty) {
+            _warehouseId =
+                settings.defaultWarehouseId ?? warehouses.first['id'];
+          }
+        }
       });
     }
   }
@@ -170,59 +196,68 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
     });
   }
 
-  void _onProductSelected(_InvoiceRow row, Map<String, dynamic> product) {
+  void _onProductSelected(_InvoiceRow row, Map<String, dynamic> product) async {
+    final productName = product['name'] ?? '';
     setState(() {
-      row.productCtr.text = product['name'] ?? '';
+      row.productCtr.text = productName;
       row.hsnCtr.text = product['hsn_sac_code'] ?? product['hsn'] ?? '';
       row.rateCtr.text = (product['sales_price'] ?? product['price'] ?? 0)
           .toString();
       row.gstRate =
           double.tryParse(product['gst_rate']?.toString() ?? '18') ?? 18.0;
       row.unitCtr.text = product['unit'] ?? 'PCS';
+      row.availableStock = null; // Reset while loading
       _calculateTotals();
     });
+
+    final stock = await getIt<StockController>().getAvailableStock(
+      productName,
+      warehouseId: _warehouseId,
+    );
+    if (mounted) {
+      setState(() {
+        row.availableStock = stock;
+      });
+    }
   }
 
   void _calculateTotals() {
-    double subtotal = 0;
-    double totalCgst = 0;
-    double totalSgst = 0;
-    double totalIgst = 0;
+    List<Map<String, dynamic>> itemsList = _rows.map((row) {
+      return {
+        'quantity': row.qtyCtr.text,
+        'rate': row.rateCtr.text,
+        'gst_rate': row.gstRate,
+        'cess_rate': 0.0,
+      };
+    }).toList();
 
-    bool isInterState = _supplyTypeController.text == 'INTER_STATE';
+    String custStateCode = '';
+    if (_gstinController.text.length >= 2) {
+      custStateCode = _gstinController.text.substring(0, 2);
+    }
 
-    for (var row in _rows) {
-      final qty = double.tryParse(row.qtyCtr.text) ?? 0;
-      final rate = double.tryParse(row.rateCtr.text) ?? 0;
+    final result = TaxEngine.computeInvoiceTax(
+      items: itemsList,
+      branchStateCode: _branchStateCode,
+      partyStateCode: custStateCode,
+    );
 
-      row.taxableValue = qty * rate;
-      subtotal += row.taxableValue;
-
-      // GST Calculation
-      double taxAmount = row.taxableValue * (row.gstRate / 100);
-
-      if (isInterState) {
-        row.igstAmount = taxAmount;
-        row.cgstAmount = 0;
-        row.sgstAmount = 0;
-      } else {
-        row.igstAmount = 0;
-        row.cgstAmount = taxAmount / 2;
-        row.sgstAmount = taxAmount / 2;
-      }
-
-      totalCgst += row.cgstAmount;
-      totalSgst += row.sgstAmount;
-      totalIgst += row.igstAmount;
+    for (int i = 0; i < _rows.length; i++) {
+      _rows[i].taxableValue = itemsList[i]['taxable_value'] ?? 0.0;
+      _rows[i].cgstAmount = itemsList[i]['cgst_amount'] ?? 0.0;
+      _rows[i].sgstAmount = itemsList[i]['sgst_amount'] ?? 0.0;
+      _rows[i].igstAmount = itemsList[i]['igst_amount'] ?? 0.0;
+      _rows[i].cessAmount = itemsList[i]['cess_amount'] ?? 0.0;
     }
 
     setState(() {
-      _subtotal = subtotal;
-      _cgst = totalCgst;
-      _sgst = totalSgst;
-      _igst = totalIgst;
-      _totalTax = totalCgst + totalSgst + totalIgst;
-      _totalAmount = _subtotal + _totalTax;
+      _supplyTypeController.text = result['supply_type'];
+      _subtotal = result['taxableValue'];
+      _cgst = result['cgstTotal'];
+      _sgst = result['sgstTotal'];
+      _igst = result['igstTotal'];
+      _totalTax = _cgst + _sgst + _igst + result['cessTotal'];
+      _totalAmount = result['grandTotal'];
     });
   }
 
@@ -232,6 +267,25 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please add at least one item'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    final settings = getIt<SettingsController>();
+    if (!settings.enableMultiWarehouse && _warehouseId == null) {
+      final warehouses =
+          _masterController.masterDataNotifier.value['warehouses'] as List?;
+      if (warehouses != null && warehouses.isNotEmpty) {
+        _warehouseId = settings.defaultWarehouseId ?? warehouses.first['id'];
+      }
+    }
+
+    if (settings.enableMultiWarehouse && _warehouseId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a Warehouse'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -256,6 +310,20 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
           cessAmount: r.cessAmount,
         );
       }).toList();
+
+      // Automatically generate strict sequential invoice number
+      final finYear =
+          '2026-27'; // Should be dynamically calculated based on current date
+      final invoiceSequence = await Supabase.instance.client.rpc(
+        'get_next_document_number',
+        params: {
+          'p_doc_type': 'SALES_INVOICE',
+          'p_fin_year': finYear,
+          'p_prefix': 'INV/',
+        },
+      );
+
+      _invoiceNumberController.text = invoiceSequence as String;
 
       final invoice = SalesInvoice(
         invoiceNumber: _invoiceNumberController.text,
@@ -283,6 +351,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
         invoiceType: _invoiceTypeController.text,
         supplyType: _supplyTypeController.text,
         reverseCharge: _reverseCharge,
+        warehouseId: _warehouseId,
       );
 
       final savedInvoice = await getIt<SalesController>().saveInvoice(invoice);
@@ -457,6 +526,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
                   child: _buildTextField(
                     'Invoice Number',
                     controller: _invoiceNumberController,
+                    readOnly: true,
                   ),
                 ),
                 SizedBox(width: 16.w),
@@ -561,6 +631,24 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
                 ),
               ],
             ),
+            if (getIt<SettingsController>().enableMultiWarehouse) ...[
+              SizedBox(height: 16.h),
+              SmartMasterDropdown(
+                module: MasterModule.warehouse,
+                label: 'Warehouse',
+                isMandatory: true,
+                displayItem: (item) => item['warehouse_name'] ?? 'Unknown',
+                onChanged: (v) {
+                  setState(() => _warehouseId = v);
+                  // Refresh stock for all currently selected items
+                  for (var r in _rows) {
+                    if (r.productCtr.text.isNotEmpty) {
+                      _onProductSelected(r, {'name': r.productCtr.text});
+                    }
+                  }
+                },
+              ),
+            ],
           ],
         ),
       ),
@@ -818,7 +906,31 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
       padding: EdgeInsets.symmetric(vertical: 8.h, horizontal: 8.w),
       child: Row(
         children: [
-          Expanded(flex: 3, child: _buildProductAutocomplete(row)),
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildProductAutocomplete(row),
+                if (row.availableStock != null)
+                  Padding(
+                    padding: EdgeInsets.only(top: 4.h, left: 4.w),
+                    child: Text(
+                      _warehouseId != null
+                          ? 'Stock in Selected Warehouse: ${row.availableStock}'
+                          : 'Global Stock: ${row.availableStock}',
+                      style: TextStyle(
+                        fontSize: 10.sp,
+                        fontWeight: FontWeight.bold,
+                        color: row.availableStock! <= 0
+                            ? AppColors.error
+                            : AppColors.success,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
           SizedBox(width: 8.w),
           Expanded(
             flex: 2,
@@ -1152,6 +1264,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
     String? prefixText,
     int maxLines = 1,
     bool isDropdown = false,
+    bool readOnly = false,
     void Function(String)? onChanged,
   }) {
     return Column(
@@ -1169,7 +1282,7 @@ class _NewInvoicePageState extends State<NewInvoicePage> {
         TextFormField(
           controller: controller,
           maxLines: maxLines,
-          readOnly: isDropdown,
+          readOnly: isDropdown || readOnly,
           onChanged: onChanged,
           decoration: InputDecoration(
             hintText: hint,
