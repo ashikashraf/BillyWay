@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:billy_way/core/widgets/app_loading_animation.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:go_router/go_router.dart';
@@ -43,7 +44,7 @@ class PurchaseInvoicePdfPreviewPage extends StatelessWidget {
         pdfFileName: 'Purchase_${(invoice.vendorBillNo ?? invoice.internalRefNo).replaceAll('/', '_')}.pdf',
         previewPageMargin: const EdgeInsets.all(10),
         loadingWidget: const Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
+          child: const AppLoadingAnimation(),
         ),
       ),
     );

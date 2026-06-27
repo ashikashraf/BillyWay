@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:billy_way/core/widgets/app_loading_animation.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 import 'package:billy_way/core/theme/app_colors.dart';
@@ -164,7 +165,7 @@ class _NewTransferPageState extends State<NewTransferPage> {
             ],
           ),
           if (_isSaving)
-            Container(color: Colors.black26, child: const Center(child: CircularProgressIndicator())),
+            Container(color: Colors.black26, child: const Center(child: AppLoadingAnimation())),
         ],
       ),
     );

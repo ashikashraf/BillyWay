@@ -1,4 +1,5 @@
 import 'package:billy_way/core/theme/theme_controller.dart';
+import 'package:billy_way/core/widgets/app_loading_animation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -157,7 +158,7 @@ class _SettingsPageState extends State<SettingsPage> {
           if (_settingsController.isLoading)
             Container(
               color: Colors.black26,
-              child: const Center(child: CircularProgressIndicator()),
+              child: const Center(child: AppLoadingAnimation()),
             ),
         ],
       ),

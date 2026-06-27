@@ -1,3 +1,4 @@
+import 'package:billy_way/features/estimate/data/models/estimate.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:billy_way/core/theme/app_theme.dart';
@@ -62,27 +63,15 @@ void setupDependencies() {
   getIt.registerLazySingleton<EstimateController>(
     () => EstimateController(Supabase.instance.client),
   );
-  getIt.registerLazySingleton<ThemeController>(
-    () => ThemeController(),
-  );
-  getIt.registerLazySingleton<PurchaseController>(
-    () => PurchaseController(),
-  );
-  getIt.registerLazySingleton<NoteController>(
-    () => NoteController(),
-  );
+  getIt.registerLazySingleton<ThemeController>(() => ThemeController());
+  getIt.registerLazySingleton<PurchaseController>(() => PurchaseController());
+  getIt.registerLazySingleton<NoteController>(() => NoteController());
   getIt.registerLazySingleton<GstReportsController>(
     () => GstReportsController(),
   );
-  getIt.registerLazySingleton<StockController>(
-    () => StockController(),
-  );
-  getIt.registerLazySingleton<TransferController>(
-    () => TransferController(),
-  );
-  getIt.registerLazySingleton<SettingsController>(
-    () => SettingsController(),
-  );
+  getIt.registerLazySingleton<StockController>(() => StockController());
+  getIt.registerLazySingleton<TransferController>(() => TransferController());
+  getIt.registerLazySingleton<SettingsController>(() => SettingsController());
   getIt.registerLazySingleton<PaymentController>(
     () => PaymentController(Supabase.instance.client),
   );
@@ -98,7 +87,7 @@ void main() async {
   );
 
   setupDependencies();
-  
+
   // Optionally fetch initial role if already logged in
   if (Supabase.instance.client.auth.currentSession != null) {
     await getIt<AuthRepository>().getUserRole();
@@ -109,7 +98,6 @@ void main() async {
   runApp(const BillyWayApp());
 }
 
-
 class BillyWayApp extends StatelessWidget {
   const BillyWayApp({super.key});
 
@@ -119,8 +107,10 @@ class BillyWayApp extends StatelessWidget {
       builder: (context, constraints) {
         // Use a mobile design size for narrow screens, and desktop for wide screens
         final isMobile = constraints.maxWidth < 600;
-        final designSize = isMobile ? const Size(390, 844) : const Size(1440, 900);
-        
+        final designSize = isMobile
+            ? const Size(390, 844)
+            : const Size(1440, 900);
+
         return ScreenUtilInit(
           designSize: designSize,
           minTextAdapt: true,
@@ -196,7 +186,7 @@ final GoRouter _router = GoRouter(
         GoRoute(
           path: '/quotations',
           builder: (context, state) => const QuotationPage(),
-        ),
+        ), 
         GoRoute(
           path: '/new-quotation',
           builder: (context, state) => const NewQuotationPage(),
@@ -207,7 +197,10 @@ final GoRouter _router = GoRouter(
         ),
         GoRoute(
           path: '/new-estimate',
-          builder: (context, state) => const NewEstimatePage(),
+          builder: (context, state) {
+            final estimate = state.extra as Estimate?;
+            return NewEstimatePage(estimate: estimate);
+          },
         ),
         GoRoute(
           path: '/estimate-preview',

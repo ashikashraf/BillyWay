@@ -1,4 +1,5 @@
 import 'package:billy_way/features/masters/presentation/pages/master_management_page.dart';
+import 'package:billy_way/core/widgets/app_loading_animation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
@@ -353,7 +354,7 @@ class _NewCreditNotePageState extends State<NewCreditNotePage> {
           if (_isSaving)
             Container(
               color: Colors.black26,
-              child: const Center(child: CircularProgressIndicator()),
+              child: const Center(child: AppLoadingAnimation()),
             ),
         ],
       ),
