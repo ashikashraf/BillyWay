@@ -165,7 +165,7 @@ class _EstimatePageState extends State<EstimatePage> {
   Widget _buildStatsRow() {
     final filtered = _filteredEstimates;
     final total = filtered.length;
-    final totalValue = filtered.fold<double>(0, (sum, e) => sum + e.subtotal);
+    final totalValue = filtered.fold<double>(0, (sum, e) => sum + e.total);
 
     bool isMobile = MediaQuery.of(context).size.width < 600;
 

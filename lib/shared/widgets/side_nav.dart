@@ -56,6 +56,13 @@ class SideNav extends StatelessWidget {
                   onTap: () => onDestinationSelected(1),
                 ),
                 _NavItem(
+                  icon: Icons.assignment_return_outlined,
+                  selectedIcon: Icons.assignment_return,
+                  label: 'Credit Notes',
+                  isSelected: selectedIndex == 13, // New index 13
+                  onTap: () => onDestinationSelected(13),
+                ),
+                _NavItem(
                   icon: Icons.request_quote_outlined,
                   selectedIcon: Icons.request_quote,
                   label: 'Quotations',

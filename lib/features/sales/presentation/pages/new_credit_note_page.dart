@@ -1,29 +1,28 @@
 import 'package:billy_way/features/masters/presentation/pages/master_management_page.dart';
-import 'package:billy_way/features/masters/presentation/widgets/smart_master_dropdown.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/tax_engine.dart';
 import 'package:billy_way/main.dart';
-import 'package:billy_way/features/purchase/data/models/purchase_invoice.dart';
-import 'package:billy_way/features/purchase/domain/controllers/purchase_controller.dart';
+import 'package:billy_way/features/sales/data/models/credit_note.dart';
+import 'package:billy_way/features/sales/domain/controllers/note_controller.dart';
 import 'package:billy_way/features/masters/domain/controllers/master_data_controller.dart';
+import 'package:billy_way/features/masters/presentation/widgets/smart_master_dropdown.dart';
 import 'package:billy_way/features/settings/domain/controllers/settings_controller.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class NewPurchasePage extends StatefulWidget {
-  const NewPurchasePage({super.key});
+class NewCreditNotePage extends StatefulWidget {
+  const NewCreditNotePage({super.key});
 
   @override
-  State<NewPurchasePage> createState() => _NewPurchasePageState();
+  State<NewCreditNotePage> createState() => _NewCreditNotePageState();
 }
 
-class _PurchaseRow {
+class _NoteRow {
   final TextEditingController productCtr = TextEditingController();
   final TextEditingController hsnCtr = TextEditingController();
   final TextEditingController qtyCtr = TextEditingController(text: '1');
-  final TextEditingController unitCtr = TextEditingController(text: 'PCS');
   final TextEditingController rateCtr = TextEditingController(text: '0');
 
   double gstRate = 18.0;
@@ -37,38 +36,34 @@ class _PurchaseRow {
     productCtr.dispose();
     hsnCtr.dispose();
     qtyCtr.dispose();
-    unitCtr.dispose();
     rateCtr.dispose();
   }
 }
 
-class _NewPurchasePageState extends State<NewPurchasePage> {
+class _NewCreditNotePageState extends State<NewCreditNotePage> {
   final _formKey = GlobalKey<FormState>();
 
   // Master Data
   late final MasterDataController _masterController;
-  List<Map<String, dynamic>> _vendors = [];
+  List<Map<String, dynamic>> _customers = [];
   List<Map<String, dynamic>> _products = [];
 
-  late final String _branchStateCode; // Default Branch State (Kerala)
+  // Branch State Code (Dynamically fetched from Settings)
+  late final String _branchStateCode;
 
   // Controllers
-  final _internalRefController = TextEditingController(
-    text: '(Auto-generated on save)',
-  );
-  final _vendorBillController = TextEditingController();
+  final _noteNumberController = TextEditingController(text: '(Auto-generated on save)');
+  final _originalInvoiceController = TextEditingController();
   final _dateController = TextEditingController();
-  final _dueDateController = TextEditingController();
+  final _reasonController = TextEditingController(text: 'Sales Return');
 
-  final _vendorCtrl = TextEditingController();
+  final _customerCtrl = TextEditingController();
   final _gstinController = TextEditingController();
   final _addressController = TextEditingController();
 
   final _supplyTypeController = TextEditingController(text: 'INTRA_STATE');
-  final _statusController = TextEditingController(text: 'Unpaid');
-  final _paymentMethodController = TextEditingController(text: 'Bank Transfer');
 
-  final List<_PurchaseRow> _rows = [_PurchaseRow()];
+  final List<_NoteRow> _rows = [_NoteRow()];
 
   // Summary state
   double _subtotal = 0;
@@ -92,9 +87,6 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
       _warehouseId = settings.defaultWarehouseId;
     }
     _dateController.text = DateFormat('dd MMM yyyy').format(DateTime.now());
-    _dueDateController.text = DateFormat(
-      'dd MMM yyyy',
-    ).format(DateTime.now().add(const Duration(days: 30)));
 
     _masterController = getIt<MasterDataController>();
     _masterController.masterDataNotifier.addListener(_onMasterDataChanged);
@@ -112,7 +104,7 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
     final data = _masterController.masterDataNotifier.value;
     if (mounted) {
       setState(() {
-        _vendors = data['ledgers'] ?? [];
+        _customers = data['ledgers'] ?? [];
         _products = data['products'] ?? [];
         
         final settings = getIt<SettingsController>();
@@ -129,11 +121,11 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
   @override
   void dispose() {
     _masterController.masterDataNotifier.removeListener(_onMasterDataChanged);
-    _internalRefController.dispose();
-    _vendorBillController.dispose();
+    _noteNumberController.dispose();
+    _originalInvoiceController.dispose();
     _dateController.dispose();
-    _dueDateController.dispose();
-    _vendorCtrl.dispose();
+    _reasonController.dispose();
+    _customerCtrl.dispose();
     _gstinController.dispose();
     _addressController.dispose();
     _supplyTypeController.dispose();
@@ -143,18 +135,18 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
     super.dispose();
   }
 
-  void _onVendorSelected(Map<String, dynamic> vendor) {
+  void _onCustomerSelected(Map<String, dynamic> customer) {
     setState(() {
-      _vendorCtrl.text = vendor['name'] ?? '';
-      _gstinController.text = vendor['gstin'] ?? '';
-      _addressController.text = vendor['address'] ?? '';
+      _customerCtrl.text = customer['name'] ?? '';
+      _gstinController.text = customer['gstin'] ?? '';
+      _addressController.text = customer['address'] ?? '';
 
-      String vendorStateCode = vendor['state_code'] ?? '';
-      if (vendorStateCode.isEmpty && _gstinController.text.length >= 2) {
-        vendorStateCode = _gstinController.text.substring(0, 2);
+      String customerStateCode = customer['state_code'] ?? '';
+      if (customerStateCode.isEmpty && _gstinController.text.length >= 2) {
+        customerStateCode = _gstinController.text.substring(0, 2);
       }
 
-      if (vendorStateCode.isEmpty || vendorStateCode == _branchStateCode) {
+      if (customerStateCode.isEmpty || customerStateCode == _branchStateCode) {
         _supplyTypeController.text = 'INTRA_STATE';
       } else {
         _supplyTypeController.text = 'INTER_STATE';
@@ -174,15 +166,15 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
       };
     }).toList();
 
-    String vendorStateCode = '';
+    String customerStateCode = '';
     if (_gstinController.text.length >= 2) {
-      vendorStateCode = _gstinController.text.substring(0, 2);
+      customerStateCode = _gstinController.text.substring(0, 2);
     }
 
     final result = TaxEngine.computeInvoiceTax(
       items: itemsList,
       branchStateCode: _branchStateCode,
-      partyStateCode: vendorStateCode,
+      partyStateCode: customerStateCode,
     );
 
     for (int i = 0; i < _rows.length; i++) {
@@ -205,14 +197,11 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
     });
   }
 
-  Future<void> _savePurchase() async {
+  Future<void> _saveCreditNote() async {
     if (!_formKey.currentState!.validate()) return;
     if (_rows.isEmpty || _rows.every((r) => r.productCtr.text.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please add at least one item'),
-          backgroundColor: AppColors.error,
-        ),
+        const SnackBar(content: Text('Please add at least one item'), backgroundColor: AppColors.error),
       );
       return;
     }
@@ -227,10 +216,7 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
 
     if (settings.enableMultiWarehouse && _warehouseId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a Warehouse'),
-          backgroundColor: AppColors.error,
-        ),
+        const SnackBar(content: Text('Please select a Warehouse'), backgroundColor: AppColors.error),
       );
       return;
     }
@@ -239,7 +225,7 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
 
     try {
       final items = _rows.where((r) => r.productCtr.text.isNotEmpty).map((r) {
-        return PurchaseInvoiceItem(
+        return CreditNoteItem(
           productName: r.productCtr.text,
           hsnSacCode: r.hsnCtr.text,
           qty: double.tryParse(r.qtyCtr.text) ?? 1,
@@ -257,26 +243,22 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
       final sequence = await Supabase.instance.client.rpc(
         'get_next_document_number',
         params: {
-          'p_doc_type': 'PURCHASE_INVOICE',
+          'p_doc_type': 'CREDIT_NOTE',
           'p_fin_year': finYear,
-          'p_prefix': 'PUR/',
+          'p_prefix': 'CN/',
         },
       );
 
-      _internalRefController.text = sequence as String;
+      _noteNumberController.text = sequence as String;
 
-      final invoice = PurchaseInvoice(
-        internalRefNo: _internalRefController.text,
-        vendorBillNo: _vendorBillController.text.isEmpty
-            ? null
-            : _vendorBillController.text,
+      final note = CreditNote(
+        noteNumber: _noteNumberController.text,
+        originalInvoiceNumber: _originalInvoiceController.text.isEmpty ? null : _originalInvoiceController.text,
         date: DateFormat('dd MMM yyyy').parse(_dateController.text),
-        dueDate: DateFormat('dd MMM yyyy').parse(_dueDateController.text),
-        vendorName: _vendorCtrl.text.isEmpty
-            ? 'Unknown Vendor'
-            : _vendorCtrl.text,
+        customerName: _customerCtrl.text.isEmpty ? 'Unknown Customer' : _customerCtrl.text,
         gstin: _gstinController.text,
         supplyType: _supplyTypeController.text,
+        reason: _reasonController.text,
         items: items,
         subtotal: _subtotal,
         cgst: _cgst,
@@ -285,21 +267,15 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
         cess: _cess,
         totalTax: _totalTax,
         totalAmount: _totalAmount,
-        status: _statusController.text,
         warehouseId: _warehouseId,
       );
 
-      await getIt<PurchaseController>().savePurchaseInvoice(invoice);
+      await getIt<NoteController>().saveCreditNote(note);
 
       setState(() => _isSaving = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Purchase Bill Saved! ITC Ledger updated automatically.',
-            ),
-            backgroundColor: Colors.green,
-          ),
+          const SnackBar(content: Text('Credit Note Saved! Sales Liability Reversed.'), backgroundColor: Colors.green),
         );
         Navigator.pop(context);
       }
@@ -307,10 +283,7 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
       setState(() => _isSaving = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error saving purchase: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Error saving credit note: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -338,9 +311,9 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
                         _buildHeader(isMobile),
                         SizedBox(height: 24.h),
                         if (isSmallScreen) ...[
-                          _buildPurchaseDetailsCard(isMobile),
+                          _buildNoteDetailsCard(isMobile),
                           SizedBox(height: 16.h),
-                          _buildVendorDetailsCard(isMobile),
+                          _buildCustomerDetailsCard(isMobile),
                           SizedBox(height: 16.h),
                           _buildItemsTableCard(isMobile),
                           SizedBox(height: 16.h),
@@ -353,9 +326,9 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
                                 flex: 3,
                                 child: Column(
                                   children: [
-                                    _buildPurchaseDetailsCard(isMobile),
+                                    _buildNoteDetailsCard(isMobile),
                                     SizedBox(height: 24.h),
-                                    _buildVendorDetailsCard(isMobile),
+                                    _buildCustomerDetailsCard(isMobile),
                                     SizedBox(height: 24.h),
                                     _buildItemsTableCard(isMobile),
                                   ],
@@ -400,72 +373,37 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Record New Purchase Bill',
-                style: TextStyle(
-                  fontSize: isMobile ? 20.sp : 24.sp,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
+                'New Credit Note (Sales Return)',
+                style: TextStyle(fontSize: isMobile ? 20.sp : 24.sp, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
               ),
               Text(
-                'Automatically updates ITC Ledger',
-                style: TextStyle(
-                  fontSize: 12.sp,
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w600,
-                ),
+                'Reverses Output Tax Liability',
+                style: TextStyle(fontSize: 12.sp, color: AppColors.primary, fontWeight: FontWeight.w600),
               ),
             ],
           ),
         ),
-        if (!isMobile) _buildStatusChip('Draft'),
       ],
     );
   }
 
-  Widget _buildStatusChip(String status) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      decoration: BoxDecoration(
-        color: AppColors.textTertiary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        status,
-        style: TextStyle(
-          color: AppColors.textSecondary,
-          fontWeight: FontWeight.bold,
-          fontSize: 14.sp,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPurchaseDetailsCard(bool isMobile) {
+  Widget _buildNoteDetailsCard(bool isMobile) {
     return Card(
       child: Padding(
         padding: EdgeInsets.all(isMobile ? 16.w : 24.w),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildSectionTitle(Icons.description_outlined, 'Bill Details'),
+            _buildSectionTitle(Icons.description_outlined, 'Note Details'),
             SizedBox(height: 24.h),
             Row(
               children: [
                 Expanded(
-                  child: _buildTextField(
-                    'Vendor Bill No',
-                    controller: _vendorBillController,
-                    hint: 'As per vendor invoice',
-                  ),
+                  child: _buildTextField('Credit Note No.', controller: _noteNumberController, readOnly: true),
                 ),
                 SizedBox(width: 16.w),
                 Expanded(
-                  child: _buildTextField(
-                    'Internal Ref #',
-                    controller: _internalRefController,
-                    readOnly: true,
-                  ),
+                  child: _buildTextField('Note Date', controller: _dateController, suffixIcon: Icons.calendar_today),
                 ),
               ],
             ),
@@ -473,150 +411,100 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
             Row(
               children: [
                 Expanded(
-                  child: _buildTextField(
-                    'Bill Date',
-                    controller: _dateController,
-                    suffixIcon: Icons.calendar_today,
-                  ),
+                  child: _buildTextField('Original Invoice No.', controller: _originalInvoiceController, hint: 'INV/2026-27/...'),
                 ),
                 SizedBox(width: 16.w),
-                Expanded(
-                  child: _buildTextField(
-                    'Due Date',
-                    controller: _dueDateController,
-                    suffixIcon: Icons.calendar_today,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 16.h),
-            Row(
-              children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _supplyTypeController.text,
+                    value: _reasonController.text,
                     decoration: InputDecoration(
-                      labelText: 'Supply Type',
-                      labelStyle: TextStyle(
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary,
-                      ),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16.w,
-                        vertical: 12.h,
-                      ),
+                      labelText: 'Reason for Note',
+                      labelStyle: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
                     ),
                     items: const [
-                      DropdownMenuItem(
-                        value: 'INTRA_STATE',
-                        child: Text('Intra-State (CGST+SGST)'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'INTER_STATE',
-                        child: Text('Inter-State (IGST)'),
-                      ),
+                      DropdownMenuItem(value: 'Sales Return', child: Text('Sales Return')),
+                      DropdownMenuItem(value: 'Post Sale Discount', child: Text('Post Sale Discount')),
+                      DropdownMenuItem(value: 'Deficiency in Service', child: Text('Deficiency in Service')),
+                      DropdownMenuItem(value: 'Correction in Invoice', child: Text('Correction in Invoice')),
+                      DropdownMenuItem(value: 'Change in POS', child: Text('Change in POS')),
+                      DropdownMenuItem(value: 'Other', child: Text('Other')),
                     ],
                     onChanged: (v) {
                       setState(() {
-                        _supplyTypeController.text = v!;
-                        _calculateTotals();
+                        _reasonController.text = v!;
                       });
                     },
                   ),
                 ),
-                if (getIt<SettingsController>().enableMultiWarehouse) ...[
-                  SizedBox(width: 16.w),
-                  Expanded(
-                    child: SmartMasterDropdown(
-                      module: MasterModule.warehouse,
-                      label: 'Warehouse',
-                      isMandatory: true,
-                      displayItem: (item) => item['warehouse_name'] ?? 'Unknown',
-                      onChanged: (v) {
-                        setState(() => _warehouseId = v);
-                      },
-                    ),
-                  ),
-                ],
               ],
             ),
+            if (getIt<SettingsController>().enableMultiWarehouse) ...[
+              SizedBox(height: 16.h),
+              SmartMasterDropdown(
+                module: MasterModule.warehouse,
+                label: 'Warehouse (Return to)',
+                isMandatory: true,
+                displayItem: (item) => item['warehouse_name'] ?? 'Unknown',
+                onChanged: (v) {
+                  setState(() => _warehouseId = v);
+                },
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _buildVendorDetailsCard(bool isMobile) {
+  Widget _buildCustomerDetailsCard(bool isMobile) {
     return Card(
       child: Padding(
         padding: EdgeInsets.all(isMobile ? 16.w : 24.w),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildSectionTitle(Icons.business_outlined, 'Vendor Details'),
+            _buildSectionTitle(Icons.person_outline, 'Customer Details'),
             SizedBox(height: 24.h),
             Row(
               children: [
-                Expanded(flex: 2, child: _buildVendorAutocomplete()),
+                Expanded(flex: 2, child: _buildCustomerAutocomplete()),
                 SizedBox(width: 16.w),
                 Expanded(
-                  child: _buildTextField(
-                    'Vendor GSTIN',
-                    controller: _gstinController,
-                    hint: '27AAAAA0000A1Z5',
-                  ),
+                  child: _buildTextField('Customer GSTIN', controller: _gstinController, hint: '27AAAAA0000A1Z5'),
                 ),
               ],
             ),
             SizedBox(height: 16.h),
-            _buildTextField(
-              'Vendor Address',
-              controller: _addressController,
-              maxLines: 2,
-            ),
+            _buildTextField('Customer Address', controller: _addressController, maxLines: 2),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildVendorAutocomplete() {
+  Widget _buildCustomerAutocomplete() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Vendor Name',
-          style: TextStyle(
-            fontSize: 12.sp,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary,
-          ),
+          'Customer Name',
+          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
         ),
         SizedBox(height: 8.sp),
         Autocomplete<Map<String, dynamic>>(
           displayStringForOption: (option) =>
-              option['ledger_name'] ??
-              option['party_name'] ??
-              option['customer_name'] ??
-              option['name'] ??
-              '',
+              option['ledger_name'] ?? option['party_name'] ?? option['customer_name'] ?? option['name'] ?? '',
           optionsBuilder: (textEditingValue) {
-            if (textEditingValue.text.isEmpty) return _vendors;
-            return _vendors.where((c) {
-              final name =
-                  ((c['ledger_name'] ??
-                          c['party_name'] ??
-                          c['customer_name'] ??
-                          c['name'] ??
-                          ''))
-                      .toLowerCase();
+            if (textEditingValue.text.isEmpty) return _customers;
+            return _customers.where((c) {
+              final name = ((c['ledger_name'] ?? c['party_name'] ?? c['customer_name'] ?? c['name'] ?? '')).toLowerCase();
               final gstin = (c['gstin'] ?? '').toLowerCase();
               final query = textEditingValue.text.toLowerCase();
               return name.contains(query) || gstin.contains(query);
             });
           },
-          onSelected: _onVendorSelected,
+          onSelected: _onCustomerSelected,
           optionsViewBuilder: (context, onSelected, options) {
             return Align(
               alignment: Alignment.topLeft,
@@ -633,29 +521,11 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
                     itemBuilder: (context, index) {
                       final option = options.elementAt(index);
                       final partyName =
-                          option['ledger_name'] ??
-                          option['party_name'] ??
-                          option['customer_name'] ??
-                          option['name'] ??
-                          '';
+                          option['ledger_name'] ?? option['party_name'] ?? option['customer_name'] ?? option['name'] ?? '';
                       return ListTile(
-                        title: Text(
-                          partyName,
-                          style: TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 14.sp,
-                          ),
-                        ),
-                        subtitle:
-                            option['gstin'] != null &&
-                                option['gstin'].isNotEmpty
-                            ? Text(
-                                option['gstin'],
-                                style: TextStyle(
-                                  color: AppColors.textSecondary,
-                                  fontSize: 12.sp,
-                                ),
-                              )
+                        title: Text(partyName, style: TextStyle(color: AppColors.textPrimary, fontSize: 14.sp)),
+                        subtitle: option['gstin'] != null && option['gstin'].isNotEmpty
+                            ? Text(option['gstin'], style: TextStyle(color: AppColors.textSecondary, fontSize: 12.sp))
                             : null,
                         onTap: () => onSelected(option),
                       );
@@ -665,29 +535,24 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
               ),
             );
           },
-          fieldViewBuilder:
-              (context, controller, focusNode, onEditingComplete) {
-                if (_vendorCtrl.text != controller.text &&
-                    !focusNode.hasFocus) {
-                  controller.text = _vendorCtrl.text;
-                }
-                return TextFormField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  onEditingComplete: onEditingComplete,
-                  decoration: InputDecoration(
-                    hintText: 'Search Vendor...',
-                    prefixIcon: const Icon(Icons.search),
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 16.w,
-                      vertical: 12.h,
-                    ),
-                  ),
-                  onChanged: (val) {
-                    _vendorCtrl.text = val;
-                  },
-                );
+          fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
+            if (_customerCtrl.text != controller.text && !focusNode.hasFocus) {
+              controller.text = _customerCtrl.text;
+            }
+            return TextFormField(
+              controller: controller,
+              focusNode: focusNode,
+              onEditingComplete: onEditingComplete,
+              decoration: InputDecoration(
+                hintText: 'Search Customer...',
+                prefixIcon: const Icon(Icons.search),
+                contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+              ),
+              onChanged: (val) {
+                _customerCtrl.text = val;
               },
+            );
+          },
         ),
       ],
     );
@@ -703,14 +568,11 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildSectionTitle(
-                  Icons.inventory_2_outlined,
-                  'Purchased Items',
-                ),
+                _buildSectionTitle(Icons.inventory_2_outlined, 'Returned Items'),
                 TextButton.icon(
                   onPressed: () {
                     setState(() {
-                      _rows.add(_PurchaseRow());
+                      _rows.add(_NoteRow());
                     });
                   },
                   icon: const Icon(Icons.add),
@@ -743,7 +605,6 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
           Expanded(flex: 3, child: _buildTableColText('Item Description')),
           Expanded(flex: 2, child: _buildTableColText('HSN')),
           Expanded(child: _buildTableColText('Qty')),
-          Expanded(child: _buildTableColText('Unit')),
           Expanded(flex: 2, child: _buildTableColText('Rate')),
           Expanded(flex: 2, child: _buildTableColText('GST %')),
           Expanded(flex: 2, child: _buildTableColText('Taxable Val')),
@@ -756,11 +617,7 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
   Widget _buildTableColText(String text) {
     return Text(
       text,
-      style: TextStyle(
-        fontSize: 12.sp,
-        fontWeight: FontWeight.bold,
-        color: AppColors.textSecondary,
-      ),
+      style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
     );
   }
 
@@ -776,50 +633,37 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
               displayStringForOption: (opt) => opt['name'] ?? '',
               optionsBuilder: (textEditingValue) {
                 if (textEditingValue.text.isEmpty) return _products;
-                return _products.where(
-                  (p) => (p['name'] ?? '').toLowerCase().contains(
-                    textEditingValue.text.toLowerCase(),
-                  ),
-                );
+                return _products.where((p) =>
+                    (p['name'] ?? '').toLowerCase().contains(textEditingValue.text.toLowerCase()));
               },
               onSelected: (product) {
                 setState(() {
                   row.productCtr.text = product['name'] ?? '';
-                  row.hsnCtr.text =
-                      product['hsn_sac_code'] ?? product['hsn'] ?? '';
-                  row.rateCtr.text =
-                      (product['purchase_price'] ?? product['price'] ?? 0)
-                          .toString();
-                  row.gstRate =
-                      double.tryParse(
-                        product['gst_rate']?.toString() ?? '18',
-                      ) ??
-                      18.0;
-                  row.unitCtr.text = product['unit'] ?? 'PCS';
+                  row.hsnCtr.text = product['hsn_sac_code'] ?? product['hsn'] ?? '';
+                  row.rateCtr.text = (product['sale_price'] ?? product['price'] ?? 0).toString();
+                  row.gstRate = double.tryParse(product['gst_rate']?.toString() ?? '18') ?? 18.0;
                   _calculateTotals();
                 });
               },
-              fieldViewBuilder:
-                  (context, controller, focusNode, onEditingComplete) {
-                    if (row.productCtr.text != controller.text &&
-                        !focusNode.hasFocus) {
-                      controller.text = row.productCtr.text;
-                    }
-                    return TextFormField(
-                      controller: controller,
-                      focusNode: focusNode,
-                      onEditingComplete: onEditingComplete,
-                      decoration: const InputDecoration(
-                        hintText: 'Search Product...',
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: UnderlineInputBorder(),
-                      ),
-                      onChanged: (val) {
-                        row.productCtr.text = val;
-                      },
-                    );
+              fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
+                if (row.productCtr.text != controller.text && !focusNode.hasFocus) {
+                  controller.text = row.productCtr.text;
+                }
+                return TextFormField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  onEditingComplete: onEditingComplete,
+                  decoration: const InputDecoration(
+                    hintText: 'Search Product...',
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: UnderlineInputBorder(),
+                  ),
+                  onChanged: (val) {
+                    row.productCtr.text = val;
                   },
+                );
+              },
             ),
           ),
           SizedBox(width: 8.w),
@@ -827,10 +671,7 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
             flex: 2,
             child: TextFormField(
               controller: row.hsnCtr,
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                hintText: 'HSN',
-              ),
+              decoration: const InputDecoration(border: InputBorder.none, hintText: 'HSN'),
             ),
           ),
           SizedBox(width: 8.w),
@@ -838,13 +679,6 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
             child: TextFormField(
               controller: row.qtyCtr,
               onChanged: (v) => _calculateTotals(),
-              decoration: const InputDecoration(border: InputBorder.none),
-            ),
-          ),
-          SizedBox(width: 8.w),
-          Expanded(
-            child: TextFormField(
-              controller: row.unitCtr,
               decoration: const InputDecoration(border: InputBorder.none),
             ),
           ),
@@ -866,12 +700,7 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
                 isDense: true,
                 style: TextStyle(fontSize: 14.sp, color: AppColors.textPrimary),
                 items: [0.0, 5.0, 12.0, 18.0, 28.0]
-                    .map(
-                      (r) => DropdownMenuItem(
-                        value: r,
-                        child: Text('${r.toInt()}%'),
-                      ),
-                    )
+                    .map((r) => DropdownMenuItem(value: r, child: Text('${r.toInt()}%')))
                     .toList(),
                 onChanged: (v) {
                   setState(() => row.gstRate = v!);
@@ -891,11 +720,7 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
           ),
           SizedBox(width: 40.w),
           IconButton(
-            icon: Icon(
-              Icons.delete_outline,
-              color: AppColors.error,
-              size: 20.sp,
-            ),
+            icon: Icon(Icons.delete_outline, color: AppColors.error, size: 20.sp),
             onPressed: () {
               setState(() => _rows.removeAt(index));
               _calculateTotals();
@@ -915,49 +740,27 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildSectionTitle(Icons.summarize_outlined, 'Summary'),
+                _buildSectionTitle(Icons.summarize_outlined, 'Summary (To Reverse)'),
                 SizedBox(height: 24.h),
-                _buildSummaryRow('Taxable Subtotal', _subtotal),
-                _buildSummaryRow('Input Tax Credit (ITC)', _totalTax),
+                _buildSummaryRow('Taxable Reversal', _subtotal),
+                _buildSummaryRow('Total Tax Reversal', _totalTax),
                 const Divider(height: 32),
                 if (_supplyTypeController.text == 'INTRA_STATE') ...[
-                  _buildSummaryRow('CGST (ITC)', _cgst, isSmall: true),
-                  _buildSummaryRow('SGST (ITC)', _sgst, isSmall: true),
+                  _buildSummaryRow('CGST (Reversal)', _cgst, isSmall: true),
+                  _buildSummaryRow('SGST (Reversal)', _sgst, isSmall: true),
                 ] else ...[
-                  _buildSummaryRow('IGST (ITC)', _igst, isSmall: true),
+                  _buildSummaryRow('IGST (Reversal)', _igst, isSmall: true),
                 ],
                 const Divider(height: 32),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Net Payable',
-                      style: TextStyle(
-                        fontSize: 16.sp,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    Text('Total Credit Note', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
                     Text(
                       '₹ ${_totalAmount.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: 20.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.primary,
-                      ),
+                      style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: AppColors.primary),
                     ),
                   ],
-                ),
-                SizedBox(height: 24.h),
-                _buildTextField(
-                  'Payment Method',
-                  initialValue: 'Bank Transfer',
-                  isDropdown: true,
-                ),
-                SizedBox(height: 16.h),
-                _buildTextField(
-                  'Status',
-                  initialValue: 'Pending',
-                  isDropdown: true,
                 ),
               ],
             ),
@@ -979,17 +782,14 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
         spacing: 16.w,
         runSpacing: 8.h,
         children: [
-          OutlinedButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.attach_file_outlined),
-            label: const Text('Attach Bill'),
-          ),
           ElevatedButton.icon(
-            onPressed: _savePurchase,
+            onPressed: _saveCreditNote,
             icon: const Icon(Icons.save),
-            label: const Text('Save Purchase Bill'),
+            label: const Text('Issue Credit Note'),
             style: ElevatedButton.styleFrom(
               padding: EdgeInsets.symmetric(horizontal: 32.w, vertical: 16.h),
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
             ),
           ),
         ],
@@ -1002,14 +802,7 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
       children: [
         Icon(icon, color: AppColors.primary, size: 20.sp),
         SizedBox(width: 8.w),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 16.sp,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
-          ),
-        ),
+        Text(title, style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
       ],
     );
   }
@@ -1029,14 +822,7 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12.sp,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary,
-          ),
-        ),
+        Text(label, style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
         SizedBox(height: 8.h),
         TextFormField(
           controller: controller,
@@ -1045,17 +831,12 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
           readOnly: isDropdown || readOnly,
           decoration: InputDecoration(
             hintText: hint,
-            prefixIcon: prefixIcon != null
-                ? Icon(prefixIcon, size: 20.sp)
-                : null,
+            prefixIcon: prefixIcon != null ? Icon(prefixIcon, size: 20.sp) : null,
             prefixText: prefixText,
             suffixIcon: isDropdown
                 ? const Icon(Icons.keyboard_arrow_down)
                 : (suffixIcon != null ? Icon(suffixIcon, size: 18.sp) : null),
-            contentPadding: EdgeInsets.symmetric(
-              horizontal: 16.w,
-              vertical: 12.h,
-            ),
+            contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
           ),
         ),
       ],
@@ -1068,19 +849,10 @@ class _NewPurchasePageState extends State<NewPurchasePage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: isSmall ? 12.sp : 14.sp,
-              color: AppColors.textSecondary,
-            ),
-          ),
+          Text(label, style: TextStyle(fontSize: isSmall ? 12.sp : 14.sp, color: AppColors.textSecondary)),
           Text(
             '₹ ${value.toStringAsFixed(2)}',
-            style: TextStyle(
-              fontSize: isSmall ? 12.sp : 14.sp,
-              fontWeight: isSmall ? FontWeight.w500 : FontWeight.w600,
-            ),
+            style: TextStyle(fontSize: isSmall ? 12.sp : 14.sp, fontWeight: isSmall ? FontWeight.w500 : FontWeight.w600),
           ),
         ],
       ),

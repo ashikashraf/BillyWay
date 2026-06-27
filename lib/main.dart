@@ -7,8 +7,11 @@ import 'package:billy_way/shared/widgets/main_layout.dart';
 import 'package:billy_way/features/sales/presentation/pages/sales_page.dart';
 import 'package:billy_way/features/dashboard/presentation/pages/dashboard_page.dart';
 import 'package:billy_way/features/sales/presentation/pages/new_invoice_page.dart';
+import 'package:billy_way/features/sales/presentation/pages/new_credit_note_page.dart';
 import 'package:billy_way/features/purchase/presentation/pages/purchase_page.dart';
 import 'package:billy_way/features/purchase/presentation/pages/new_purchase_page.dart';
+import 'package:billy_way/features/transfers/presentation/pages/new_transfer_page.dart';
+import 'package:billy_way/features/reports/presentation/pages/gst_reports_page.dart';
 import 'package:billy_way/features/stock/presentation/pages/product_entry_page.dart';
 import 'package:billy_way/features/parties/presentation/pages/ledger_entry_page.dart';
 import 'package:billy_way/features/masters/presentation/pages/master_management_page.dart';
@@ -23,6 +26,8 @@ import 'package:billy_way/features/estimate/presentation/pages/new_estimate_page
 import 'package:billy_way/features/estimate/presentation/pages/estimate_pdf_preview_page.dart';
 import 'package:billy_way/features/estimate/domain/controllers/estimate_controller.dart';
 import 'package:billy_way/features/settings/presentation/pages/settings_page.dart';
+import 'package:billy_way/features/payments/domain/controllers/payment_controller.dart';
+import 'package:billy_way/features/payments/presentation/pages/new_payment_page.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:get_it/get_it.dart';
@@ -30,6 +35,14 @@ import 'package:billy_way/features/auth/domain/repositories/auth_repository.dart
 import 'package:billy_way/features/auth/data/repositories/supabase_auth_repository.dart';
 import 'package:billy_way/features/masters/domain/controllers/master_data_controller.dart';
 import 'package:billy_way/features/sales/domain/controllers/sales_controller.dart';
+import 'package:billy_way/features/purchase/domain/controllers/purchase_controller.dart';
+import 'package:billy_way/features/sales/domain/controllers/note_controller.dart';
+import 'package:billy_way/features/reports/domain/controllers/gst_reports_controller.dart';
+import 'package:billy_way/features/stock/domain/controllers/stock_controller.dart';
+import 'package:billy_way/features/transfers/domain/controllers/transfer_controller.dart';
+import 'package:billy_way/features/sales/presentation/pages/sales_invoice_pdf_preview_page.dart';
+import 'package:billy_way/features/purchase/presentation/pages/purchase_invoice_pdf_preview_page.dart';
+import 'package:billy_way/features/settings/domain/controllers/settings_controller.dart';
 
 final getIt = GetIt.instance;
 
@@ -52,6 +65,27 @@ void setupDependencies() {
   getIt.registerLazySingleton<ThemeController>(
     () => ThemeController(),
   );
+  getIt.registerLazySingleton<PurchaseController>(
+    () => PurchaseController(),
+  );
+  getIt.registerLazySingleton<NoteController>(
+    () => NoteController(),
+  );
+  getIt.registerLazySingleton<GstReportsController>(
+    () => GstReportsController(),
+  );
+  getIt.registerLazySingleton<StockController>(
+    () => StockController(),
+  );
+  getIt.registerLazySingleton<TransferController>(
+    () => TransferController(),
+  );
+  getIt.registerLazySingleton<SettingsController>(
+    () => SettingsController(),
+  );
+  getIt.registerLazySingleton<PaymentController>(
+    () => PaymentController(Supabase.instance.client),
+  );
 }
 
 void main() async {
@@ -69,6 +103,7 @@ void main() async {
   if (Supabase.instance.client.auth.currentSession != null) {
     await getIt<AuthRepository>().getUserRole();
     getIt<MasterDataController>().initRealtimeSync();
+    getIt<SettingsController>().fetchSettings();
   }
 
   runApp(const BillyWayApp());
@@ -144,6 +179,21 @@ final GoRouter _router = GoRouter(
           builder: (context, state) => const NewInvoicePage(),
         ),
         GoRoute(
+          path: '/new-credit-note',
+          builder: (context, state) => const NewCreditNotePage(),
+        ),
+        GoRoute(
+          path: '/sales-invoice-pdf-preview',
+          builder: (context, state) {
+            final args = state.extra as Map<String, dynamic>? ?? {};
+            return SalesInvoicePdfPreviewPage(
+              invoice: args['invoice'],
+              formatType: args['formatType'] ?? 'A4',
+              fromNewInvoice: args['fromNewInvoice'] ?? false,
+            );
+          },
+        ),
+        GoRoute(
           path: '/quotations',
           builder: (context, state) => const QuotationPage(),
         ),
@@ -179,6 +229,17 @@ final GoRouter _router = GoRouter(
           builder: (context, state) => const NewPurchasePage(),
         ),
         GoRoute(
+          path: '/purchase-invoice-pdf-preview',
+          builder: (context, state) {
+            final args = state.extra as Map<String, dynamic>? ?? {};
+            return PurchaseInvoicePdfPreviewPage(
+              invoice: args['invoice'],
+              formatType: args['formatType'] ?? 'A4',
+              fromNewPurchase: args['fromNewPurchase'] ?? false,
+            );
+          },
+        ),
+        GoRoute(
           path: '/stock',
           builder: (context, state) => const PlaceholderPage(title: 'Stock'),
         ),
@@ -189,8 +250,7 @@ final GoRouter _router = GoRouter(
         ),
         GoRoute(
           path: '/reports',
-          builder: (context, state) =>
-              const PlaceholderPage(title: 'GST Reports'),
+          builder: (context, state) => const GstReportsPage(),
         ),
         GoRoute(
           path: '/masters',
@@ -207,6 +267,10 @@ final GoRouter _router = GoRouter(
         GoRoute(
           path: '/settings',
           builder: (context, state) => const SettingsPage(),
+        ),
+        GoRoute(
+          path: '/new-payment',
+          builder: (context, state) => const NewPaymentPage(),
         ),
         GoRoute(
           path: '/users',

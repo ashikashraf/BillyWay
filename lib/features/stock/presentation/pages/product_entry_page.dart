@@ -1,8 +1,11 @@
+import 'package:billy_way/features/masters/domain/controllers/master_data_controller.dart';
+import 'package:billy_way/features/masters/presentation/pages/master_management_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../masters/presentation/pages/master_management_page.dart';
 import '../../../masters/presentation/widgets/smart_master_dropdown.dart';
+import 'package:billy_way/main.dart';
+import 'package:billy_way/features/stock/domain/controllers/stock_controller.dart';
 
 class ProductEntryPage extends StatefulWidget {
   const ProductEntryPage({super.key});
@@ -13,11 +16,18 @@ class ProductEntryPage extends StatefulWidget {
 
 class _ProductEntryPageState extends State<ProductEntryPage> {
   final _formKey = GlobalKey<FormState>();
-  
+
   // Controllers for margin calculation
   final _purchaseController = TextEditingController(text: '0.00');
   final _sellingController = TextEditingController(text: '0.00');
+  final _nameController = TextEditingController();
+  final _openingStockController = TextEditingController(text: '0');
+  final _hsnController =
+      TextEditingController(); // Or use SmartMasterDropdown selection
   double _marginPercent = 0.0;
+
+  String? _selectedCategoryId;
+  String? _selectedHsnId;
 
   bool _isInclusive = true;
 
@@ -35,6 +45,51 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
       setState(() {
         _marginPercent = ((s - p) / p) * 100;
       });
+    }
+  }
+
+  Future<void> _saveProduct() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Product Name is required')));
+      return;
+    }
+
+    try {
+      final stockController = getIt<StockController>();
+      final openingStock = double.tryParse(_openingStockController.text) ?? 0.0;
+
+      final data = getIt<MasterDataController>().masterDataNotifier.value;
+      final hsnList = data['hsn_codes'] ?? [];
+      Map<String, dynamic>? hsnMap;
+      try {
+        hsnMap = hsnList.firstWhere((e) => e['id'] == _selectedHsnId);
+      } catch (_) {}
+
+      final productData = {
+        'name': _nameController.text.trim(),
+        'hsn_sac_code': hsnMap?['hsn_code'],
+        'gst_rate':
+            double.tryParse(hsnMap?['gst_rate']?.toString() ?? '18') ?? 18.0,
+      };
+
+      await stockController.createProductWithOpeningStock(
+        productData,
+        openingStock,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Product Saved Successfully!')),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -144,7 +199,11 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
         children: [
           Text(
             'ACTIVE',
-            style: TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, fontSize: 12.sp),
+            style: TextStyle(
+              color: AppColors.success,
+              fontWeight: FontWeight.bold,
+              fontSize: 12.sp,
+            ),
           ),
           SizedBox(width: 8.w),
           Switch.adaptive(
@@ -167,18 +226,26 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
           children: [
             _buildSectionTitle(Icons.info_outline, 'Basic Information'),
             SizedBox(height: 24.h),
-            _buildTextField('Product Name', hint: 'e.g. Saffola Gold Edible Oil'),
+            _buildTextField(
+              'Product Name',
+              hint: 'e.g. Saffola Gold Edible Oil',
+              controller: _nameController,
+            ),
             SizedBox(height: 16.h),
             if (isMobile) ...[
               _buildTextField('SKU / Product Code', hint: 'PROD-001'),
               SizedBox(height: 16.h),
-              _buildTextField('Barcode', hint: 'Scan or Enter Barcode', suffixIcon: Icons.qr_code_scanner),
+              _buildTextField(
+                'Barcode',
+                hint: 'Scan or Enter Barcode',
+                suffixIcon: Icons.qr_code_scanner,
+              ),
               SizedBox(height: 16.h),
               SmartMasterDropdown(
                 module: MasterModule.itemCategory,
                 label: 'Category',
                 displayItem: (item) => item['category_name'] ?? 'Unknown',
-                onChanged: (v) {},
+                onChanged: (v) => _selectedCategoryId = v,
               ),
               SizedBox(height: 16.h),
               SmartMasterDropdown(
@@ -191,15 +258,27 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
               SmartMasterDropdown(
                 module: MasterModule.hsnCode,
                 label: 'HSN Code',
-                displayItem: (item) => '${item['hsn_code']} - ${item['description'] ?? ''}',
-                onChanged: (v) {},
+                displayItem: (item) =>
+                    '${item['hsn_code']} - ${item['description'] ?? ''}',
+                onChanged: (v) => _selectedHsnId = v,
               ),
             ] else ...[
               Row(
                 children: [
-                  Expanded(child: _buildTextField('SKU / Product Code', hint: 'PROD-001')),
+                  Expanded(
+                    child: _buildTextField(
+                      'SKU / Product Code',
+                      hint: 'PROD-001',
+                    ),
+                  ),
                   SizedBox(width: 16.w),
-                  Expanded(child: _buildTextField('Barcode', hint: 'Scan or Enter Barcode', suffixIcon: Icons.qr_code_scanner)),
+                  Expanded(
+                    child: _buildTextField(
+                      'Barcode',
+                      hint: 'Scan or Enter Barcode',
+                      suffixIcon: Icons.qr_code_scanner,
+                    ),
+                  ),
                 ],
               ),
               SizedBox(height: 16.h),
@@ -210,7 +289,7 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
                       module: MasterModule.itemCategory,
                       label: 'Category',
                       displayItem: (item) => item['category_name'] ?? 'Unknown',
-                      onChanged: (v) {},
+                      onChanged: (v) => _selectedCategoryId = v,
                     ),
                   ),
                   SizedBox(width: 16.w),
@@ -227,8 +306,9 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
                     child: SmartMasterDropdown(
                       module: MasterModule.hsnCode,
                       label: 'HSN Code',
-                      displayItem: (item) => '${item['hsn_code']} - ${item['description'] ?? ''}',
-                      onChanged: (v) {},
+                      displayItem: (item) =>
+                          '${item['hsn_code']} - ${item['description'] ?? ''}',
+                      onChanged: (v) => _selectedHsnId = v,
                     ),
                   ),
                 ],
@@ -250,17 +330,37 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
             _buildSectionTitle(Icons.payments_outlined, 'Pricing & Taxation'),
             SizedBox(height: 24.h),
             if (isMobile) ...[
-              _buildTextField('Purchase Price', controller: _purchaseController, prefixText: '₹ '),
+              _buildTextField(
+                'Purchase Price',
+                controller: _purchaseController,
+                prefixText: '₹ ',
+              ),
               SizedBox(height: 16.h),
-              _buildTextField('Selling Price', controller: _sellingController, prefixText: '₹ '),
+              _buildTextField(
+                'Selling Price',
+                controller: _sellingController,
+                prefixText: '₹ ',
+              ),
               SizedBox(height: 16.h),
               _buildTextField('MRP', prefixText: '₹ '),
             ] else
               Row(
                 children: [
-                  Expanded(child: _buildTextField('Purchase Price', controller: _purchaseController, prefixText: '₹ ')),
+                  Expanded(
+                    child: _buildTextField(
+                      'Purchase Price',
+                      controller: _purchaseController,
+                      prefixText: '₹ ',
+                    ),
+                  ),
                   SizedBox(width: 16.w),
-                  Expanded(child: _buildTextField('Selling Price', controller: _sellingController, prefixText: '₹ ')),
+                  Expanded(
+                    child: _buildTextField(
+                      'Selling Price',
+                      controller: _sellingController,
+                      prefixText: '₹ ',
+                    ),
+                  ),
                   SizedBox(width: 16.w),
                   Expanded(child: _buildTextField('MRP', prefixText: '₹ ')),
                 ],
@@ -275,10 +375,22 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
                 ),
                 child: Row(
                   children: [
-                    Text('Margin:', style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary)),
+                    Text(
+                      'Margin:',
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
                     SizedBox(width: 8.w),
-                    Text('${_marginPercent.toStringAsFixed(1)}%', 
-                      style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                    Text(
+                      '${_marginPercent.toStringAsFixed(1)}%',
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -286,7 +398,8 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
               SmartMasterDropdown(
                 module: MasterModule.taxClass,
                 label: 'Tax Class',
-                displayItem: (item) => '${item['tax_class_name']} (${item['gst_percentage']}%)',
+                displayItem: (item) =>
+                    '${item['tax_class_name']} (${item['gst_percentage']}%)',
                 onChanged: (v) {},
               ),
               SizedBox(height: 16.h),
@@ -303,10 +416,22 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
                       ),
                       child: Row(
                         children: [
-                          Text('Margin:', style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary)),
+                          Text(
+                            'Margin:',
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
                           SizedBox(width: 8.w),
-                          Text('${_marginPercent.toStringAsFixed(1)}%', 
-                            style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                          Text(
+                            '${_marginPercent.toStringAsFixed(1)}%',
+                            style: TextStyle(
+                              fontSize: 16.sp,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primary,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -316,7 +441,8 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
                     child: SmartMasterDropdown(
                       module: MasterModule.taxClass,
                       label: 'Tax Class',
-                      displayItem: (item) => '${item['tax_class_name']} (${item['gst_percentage']}%)',
+                      displayItem: (item) =>
+                          '${item['tax_class_name']} (${item['gst_percentage']}%)',
                       onChanged: (v) {},
                     ),
                   ),
@@ -334,7 +460,14 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Tax Type', style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
+        Text(
+          'Tax Type',
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textSecondary,
+          ),
+        ),
         Row(
           children: [
             ChoiceChip(
@@ -361,15 +494,22 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildSectionTitle(Icons.inventory_2_outlined, 'Inventory Management'),
+            _buildSectionTitle(
+              Icons.inventory_2_outlined,
+              'Inventory Management',
+            ),
             SizedBox(height: 24.h),
             if (isMobile) ...[
-              _buildTextField('Opening Stock', initialValue: '0'),
+              _buildTextField(
+                'Opening Stock',
+                controller: _openingStockController,
+              ),
               SizedBox(height: 16.h),
               SmartMasterDropdown(
                 module: MasterModule.uom,
                 label: 'Unit',
-                displayItem: (item) => '${item['unit_name']} (${item['symbol']})',
+                displayItem: (item) =>
+                    '${item['unit_name']} (${item['symbol']})',
                 onChanged: (v) {},
               ),
               SizedBox(height: 16.h),
@@ -381,24 +521,34 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
             ] else ...[
               Row(
                 children: [
-                  Expanded(child: _buildTextField('Opening Stock', initialValue: '0')),
+                  Expanded(
+                    child: _buildTextField(
+                      'Opening Stock',
+                      controller: _openingStockController,
+                    ),
+                  ),
                   SizedBox(width: 16.w),
                   Expanded(
                     child: SmartMasterDropdown(
                       module: MasterModule.uom,
                       label: 'Unit',
-                      displayItem: (item) => '${item['unit_name']} (${item['symbol']})',
+                      displayItem: (item) =>
+                          '${item['unit_name']} (${item['symbol']})',
                       onChanged: (v) {},
                     ),
                   ),
                   SizedBox(width: 16.w),
-                  Expanded(child: _buildTextField('Reorder Level', initialValue: '10')),
+                  Expanded(
+                    child: _buildTextField('Reorder Level', initialValue: '10'),
+                  ),
                 ],
               ),
               SizedBox(height: 16.h),
               Row(
                 children: [
-                  Expanded(child: _buildTextField('Warehouse Location', hint: 'A-102')),
+                  Expanded(
+                    child: _buildTextField('Warehouse Location', hint: 'A-102'),
+                  ),
                   SizedBox(width: 16.w),
                   Expanded(child: _buildTextField('MOQ', initialValue: '1')),
                 ],
@@ -419,7 +569,11 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
           children: [
             _buildSectionTitle(Icons.more_horiz, 'Additional Details'),
             SizedBox(height: 24.h),
-            _buildTextField('Description', maxLines: 3, hint: 'Enter detailed product description...'),
+            _buildTextField(
+              'Description',
+              maxLines: 3,
+              hint: 'Enter detailed product description...',
+            ),
             SizedBox(height: 16.h),
             _buildTextField('Variants', hint: 'e.g. Size: Large, Color: Red'),
           ],
@@ -438,32 +592,74 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
             width: double.infinity,
             decoration: BoxDecoration(
               color: AppColors.divider.withValues(alpha: 0.3),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(16),
+              ),
             ),
-            child: Icon(Icons.image_outlined, size: 48.sp, color: AppColors.textTertiary),
+            child: Icon(
+              Icons.image_outlined,
+              size: 48.sp,
+              color: AppColors.textTertiary,
+            ),
           ),
           Padding(
             padding: EdgeInsets.all(20.w),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('PREVIEW', style: TextStyle(fontSize: 10.sp, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                Text(
+                  'PREVIEW',
+                  style: TextStyle(
+                    fontSize: 10.sp,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
+                ),
                 SizedBox(height: 8.h),
-                Text('Product Name Preview', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
+                Text(
+                  'Product Name Preview',
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 SizedBox(height: 4.h),
-                Text('Category Name', style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
+                Text(
+                  'Category Name',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
                 SizedBox(height: 16.h),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('₹ 0.00', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                    Text(
+                      '₹ 0.00',
+                      style: TextStyle(
+                        fontSize: 18.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
                     Container(
-                      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8.w,
+                        vertical: 4.h,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.warning.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: Text('Stock: 0', style: TextStyle(color: AppColors.warning, fontSize: 11.sp, fontWeight: FontWeight.bold)),
+                      child: Text(
+                        'Stock: 0',
+                        style: TextStyle(
+                          color: AppColors.warning,
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -488,17 +684,37 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
               height: 120.h,
               width: double.infinity,
               decoration: BoxDecoration(
-                border: Border.all(color: AppColors.primary.withValues(alpha: 0.3), style: BorderStyle.none), // Simplified for design
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.3),
+                  style: BorderStyle.none,
+                ), // Simplified for design
                 borderRadius: BorderRadius.circular(12),
                 color: AppColors.primary.withValues(alpha: 0.02),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.add_photo_alternate_outlined, color: AppColors.primary, size: 32.sp),
+                  Icon(
+                    Icons.add_photo_alternate_outlined,
+                    color: AppColors.primary,
+                    size: 32.sp,
+                  ),
                   SizedBox(height: 8.h),
-                  Text('Drag & Drop or Click', style: TextStyle(fontSize: 12.sp, color: AppColors.primary, fontWeight: FontWeight.w600)),
-                  Text('Max size 2MB (JPG/PNG)', style: TextStyle(fontSize: 10.sp, color: AppColors.textTertiary)),
+                  Text(
+                    'Drag & Drop or Click',
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    'Max size 2MB (JPG/PNG)',
+                    style: TextStyle(
+                      fontSize: 10.sp,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -518,13 +734,10 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          OutlinedButton(
-            onPressed: () {},
-            child: const Text('Clear All'),
-          ),
+          OutlinedButton(onPressed: () {}, child: const Text('Clear All')),
           SizedBox(width: 16.w),
           ElevatedButton.icon(
-            onPressed: () {},
+            onPressed: _saveProduct,
             icon: const Icon(Icons.check_circle_outline),
             label: const Text('Save Product Master'),
             style: ElevatedButton.styleFrom(
@@ -543,16 +756,39 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
       children: [
         Icon(icon, color: AppColors.primary, size: 20.sp),
         SizedBox(width: 8.w),
-        Text(title, style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 16.sp,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildTextField(String label, {String? hint, String? initialValue, TextEditingController? controller, IconData? prefixIcon, IconData? suffixIcon, String? prefixText, int maxLines = 1}) {
+  Widget _buildTextField(
+    String label, {
+    String? hint,
+    String? initialValue,
+    TextEditingController? controller,
+    IconData? prefixIcon,
+    IconData? suffixIcon,
+    String? prefixText,
+    int maxLines = 1,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
+          ),
+        ),
         SizedBox(height: 8.h),
         TextFormField(
           controller: controller,
@@ -560,14 +796,20 @@ class _ProductEntryPageState extends State<ProductEntryPage> {
           maxLines: maxLines,
           decoration: InputDecoration(
             hintText: hint,
-            prefixIcon: prefixIcon != null ? Icon(prefixIcon, size: 20.sp) : null,
+            prefixIcon: prefixIcon != null
+                ? Icon(prefixIcon, size: 20.sp)
+                : null,
             prefixText: prefixText,
-            suffixIcon: suffixIcon != null ? Icon(suffixIcon, size: 18.sp) : null,
-            contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+            suffixIcon: suffixIcon != null
+                ? Icon(suffixIcon, size: 18.sp)
+                : null,
+            contentPadding: EdgeInsets.symmetric(
+              horizontal: 16.w,
+              vertical: 12.h,
+            ),
           ),
         ),
       ],
     );
   }
-
 }

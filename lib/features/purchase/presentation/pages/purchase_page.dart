@@ -4,8 +4,39 @@ import 'package:data_table_2/data_table_2.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 
-class PurchasePage extends StatelessWidget {
+import 'package:intl/intl.dart';
+import '../../../../main.dart';
+import '../../data/models/purchase_invoice.dart';
+import '../../domain/controllers/purchase_controller.dart';
+
+class PurchasePage extends StatefulWidget {
   const PurchasePage({super.key});
+
+  @override
+  State<PurchasePage> createState() => _PurchasePageState();
+}
+
+class _PurchasePageState extends State<PurchasePage> {
+  bool _isLoading = true;
+  List<PurchaseInvoice> _invoices = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInvoices();
+  }
+
+  Future<void> _loadInvoices() async {
+    setState(() => _isLoading = true);
+    final purchaseController = getIt<PurchaseController>();
+    final invoices = await purchaseController.getPurchaseInvoices();
+    if (mounted) {
+      setState(() {
+        _invoices = invoices;
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -139,6 +170,7 @@ class PurchasePage extends StatelessWidget {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: DataTable2(
+        showCheckboxColumn: false,
         columnSpacing: 12,
         horizontalMargin: 12,
         minWidth: 800,
@@ -157,33 +189,67 @@ class PurchasePage extends StatelessWidget {
           DataColumn2(label: Text('Status'), size: ColumnSize.S),
           DataColumn2(label: Text('Actions'), size: ColumnSize.S),
         ],
-        rows: List.generate(10, (index) {
-          return DataRow(
-            cells: [
-              DataCell(Text('PUR-2024-${500 + index}')),
-              DataCell(Text('28 Apr 2024')),
-              DataCell(Text('Wholesale Supplier $index')),
-              DataCell(Text('₹ 2,000.00')),
-              DataCell(Text('₹ 360.00')),
-              DataCell(Text('₹ 2,360.00')),
-              DataCell(_buildStatusChip('Paid')),
-              DataCell(
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.print, size: 18),
-                      onPressed: () {},
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.more_vert, size: 18),
-                      onPressed: () {},
-                    ),
+        rows: _isLoading
+            ? []
+            : _invoices.isEmpty
+            ? [
+                const DataRow(
+                  cells: [
+                    DataCell(Text('')),
+                    DataCell(Text('')),
+                    DataCell(Text('')),
+                    DataCell(Text('No bills found')),
+                    DataCell(Text('')),
+                    DataCell(Text('')),
+                    DataCell(Text('')),
+                    DataCell(Text('')),
                   ],
                 ),
-              ),
-            ],
-          );
-        }),
+              ]
+            : _invoices.map((invoice) {
+                return DataRow(
+                  onSelectChanged: (_) {
+                    context.push(
+                      '/purchase-invoice-pdf-preview',
+                      extra: {'invoice': invoice, 'formatType': 'A4'},
+                    );
+                  },
+                  cells: [
+                    DataCell(
+                      Text(invoice.vendorBillNo ?? invoice.internalRefNo),
+                    ),
+                    DataCell(
+                      Text(DateFormat('dd MMM yyyy').format(invoice.date)),
+                    ),
+                    DataCell(Text(invoice.vendorName)),
+                    DataCell(Text('₹ ${invoice.subtotal.toStringAsFixed(2)}')),
+                    DataCell(Text('₹ ${invoice.totalTax.toStringAsFixed(2)}')),
+                    DataCell(
+                      Text('₹ ${invoice.totalAmount.toStringAsFixed(2)}'),
+                    ),
+                    DataCell(_buildStatusChip(invoice.status)),
+                    DataCell(
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.print, size: 18),
+                            onPressed: () {
+                              context.push(
+                                '/purchase-invoice-pdf-preview',
+                                extra: {'invoice': invoice, 'formatType': 'A4'},
+                              );
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.more_vert, size: 18),
+                            onPressed: () {},
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              }).toList(),
       ),
     );
   }

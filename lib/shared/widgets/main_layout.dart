@@ -56,6 +56,12 @@ class _MainLayoutState extends State<MainLayout> {
       case 12:
         context.go('/estimates');
         break;
+      case 13:
+        context.go('/new-credit-note');
+        break;
+      case 14:
+        context.go('/new-payment');
+        break;
     }
   }
 
